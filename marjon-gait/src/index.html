@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marjon Gait | Running Gait Assessment</title>
+<style>
+/*CSS*/
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="titlebar">
+    <img class="logo" src="__LOGO_WHITE__" alt="Plymouth Marjon University">
+    <div class="appname"><b>Marjon Gait</b><span>Running gait assessment · v__VERSION__</span></div>
+    <div class="sess" id="sessTitle">Untitled session</div>
+    <div class="grow"></div>
+    <button class="tbtn" id="btnNew" title="New session (Ctrl+N)"><svg viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z M9 1.5v3h3"/></svg>New</button>
+    <button class="tbtn" id="btnOpen" title="Open session (Ctrl+O)"><svg viewBox="0 0 16 16"><path d="M1.5 3.5h4l1.5 1.5h7.5v8.5h-13z"/></svg>Open</button>
+    <button class="tbtn" id="btnSave" title="Save session (Ctrl+S)"><svg viewBox="0 0 16 16"><path d="M2.5 2.5h9l2 2v9h-11z M5 2.5v4h6v-4 M5 13.5v-4h6v4"/></svg>Save</button>
+    <button class="tbtn" id="btnHelp" title="Capture protocol and shortcuts (F1)"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4 M8 11.6v.1"/></svg>Help</button>
+    <span class="sep"></span>
+    <button class="tbtn primary" id="btnReport" title="Build report (Ctrl+R)"><svg viewBox="0 0 16 16"><path d="M3.5 1.5h9v13h-9z M6 5h4 M6 8h4 M6 11h2"/></svg>Report</button>
+  </header>
+
+  <div id="toolbar">
+    <button class="tool" id="tSession" title="Client and session details"><svg viewBox="0 0 16 16"><circle cx="8" cy="5" r="2.8"/><path d="M2.5 14.5c.6-3 2.9-4.5 5.5-4.5s4.9 1.5 5.5 4.5"/></svg>Session</button>
+    <span class="sep"></span>
+    <div class="seg" id="modeSeg">
+      <button class="tool on" data-mode="place" title="Place / select (P)"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3 M8 12v3 M1 8h3 M12 8h3"/></svg>Place</button>
+      <button class="tool" data-mode="calib" title="Calibrate on the belt (C)"><svg viewBox="0 0 16 16"><path d="M1.5 10.5l9-9 4 4-9 9z M4 8l1.5 1.5 M6 6l2 2 M8 4l1.5 1.5"/></svg>Calibrate</button>
+    </div>
+    <span class="sep"></span>
+    <button class="tool" id="tLabel" title="Find and label markers on this frame (A)"><svg viewBox="0 0 16 16"><path d="M1.5 8.5v-6h6l7 7-6 6z"/><circle cx="5" cy="5.5" r="1"/></svg>Auto-label</button>
+    <button class="tool" id="tTrack" title="Track forward from this frame (T)"><svg viewBox="0 0 16 16"><path d="M1.5 12.5c3-1 3-8 6.5-8s3.5 5 6.5 4"/><circle cx="2" cy="12.5" r="1.2"/><circle cx="14" cy="8.5" r="1.2"/></svg>Track</button>
+    <button class="tool" id="tStop" title="Stop tracking (Esc)" disabled><svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8"/></svg>Stop</button>
+    <button class="tool" id="tEvents" title="Detect gait events (E)"><svg viewBox="0 0 16 16"><path d="M3.5 14.5v-13 M3.5 2h8l-2 2.5 2 2.5h-8"/></svg>Events</button>
+    <button class="tool" id="tCalc" title="Calculate (Enter)"><svg viewBox="0 0 16 16"><path d="M12 2.5H4l4.5 5.5L4 13.5h8"/></svg>Calculate</button>
+    <span class="sep"></span>
+    <button class="tool accent" id="tAuto" title="Auto-label, track, detect events and calculate every loaded view"><svg viewBox="0 0 16 16"><path d="M5 2.5l9 5.5-9 5.5z M1.5 2.5v11"/></svg>Process all views</button>
+    <div class="grow"></div>
+    <button class="tool" id="tFit" title="Fit image (F)"><svg viewBox="0 0 16 16"><path d="M1.5 5.5v-4h4 M10.5 1.5h4v4 M14.5 10.5v4h-4 M5.5 14.5h-4v-4"/></svg>Fit</button>
+    <span class="zoomlbl" id="zoomLbl">100%</span>
+  </div>
+
+  <div id="work">
+    <aside id="leftp" class="side">
+      <div class="ph">Project</div>
+      <div id="tree" class="tree"></div>
+    </aside>
+
+    <section id="centre">
+      <div id="vpWrap">
+        <canvas id="vp" tabindex="0"></canvas>
+        <div id="vpEmpty"></div>
+        <div id="busy" hidden><div class="bar"><div id="busyFill"></div></div><span id="busyTxt"></span></div>
+      </div>
+      <div id="tlWrap">
+        <div class="transport">
+          <button class="ib" data-go="start" title="Range start (Home)"><svg viewBox="0 0 16 16"><path d="M3.5 3v10 M13 3l-7 5 7 5z"/></svg></button>
+          <button class="ib" data-go="-10" title="Back 10 (Shift+←)"><svg viewBox="0 0 16 16"><path d="M8 3L2 8l6 5z M14 3L8 8l6 5z"/></svg></button>
+          <button class="ib" data-go="-1" title="Back 1 (←)"><svg viewBox="0 0 16 16"><path d="M11 3L5 8l6 5z"/></svg></button>
+          <button class="ib" id="bPlay" title="Play / pause (Space)"><svg viewBox="0 0 16 16"><path d="M5 3l8 5-8 5z"/></svg></button>
+          <button class="ib" data-go="1" title="Forward 1 (→)"><svg viewBox="0 0 16 16"><path d="M5 3l6 5-6 5z"/></svg></button>
+          <button class="ib" data-go="10" title="Forward 10 (Shift+→)"><svg viewBox="0 0 16 16"><path d="M8 3l6 5-6 5z M2 3l6 5-6 5z"/></svg></button>
+          <button class="ib" data-go="end" title="Range end (End)"><svg viewBox="0 0 16 16"><path d="M12.5 3v10 M3 3l7 5-7 5z"/></svg></button>
+          <span class="fr">Frame <input id="frameIn" type="number" min="0" value="0"> <span id="frameOf">/ 0</span></span>
+          <span class="fr dim" id="timeLbl">0.000 s</span>
+          <div class="grow"></div>
+          <span class="legend"><i class="lg ic"></i><span id="lgA">Contact</span><i class="lg to"></i><span id="lgB">Toe-off</span></span>
+        </div>
+        <canvas id="tl"></canvas>
+      </div>
+    </section>
+
+    <aside id="rightp" class="side">
+      <div class="ptabs" id="ptabs">
+        <button data-pane="traj" class="on">Trajectories</button><button data-pane="events">Events</button><button data-pane="data">Data</button><button data-pane="props">Properties</button>
+      </div>
+      <div class="pane on" id="pane-traj"></div>
+      <div class="pane" id="pane-events"></div>
+      <div class="pane" id="pane-data"></div>
+      <div class="pane" id="pane-props"></div>
+    </aside>
+  </div>
+
+  <footer id="statusbar"><span id="statusMsg">Ready</span><span class="grow"></span><span id="sbView"></span><span id="sbScale"></span><span id="sbFps"></span><span id="sbCursor"></span></footer>
+</div>
+
+<dialog id="dlgSession">
+  <form method="dialog">
+    <div class="dh">Session details</div>
+    <div class="dgrid">
+      <fieldset><legend>Client</legend>
+        <label>Name<input id="cName" autocomplete="off"></label>
+        <label>Date<input id="cDate" type="date"></label>
+        <label>Reason for assessment<input id="cReason"></label>
+        <label>Running background<input id="cBackground" placeholder="e.g. 35 km/week, half marathon 1:42"></label>
+        <label>Injury history<input id="cInjury"></label>
+        <label>Current symptoms<input id="cSymptoms"></label>
+      </fieldset>
+      <fieldset><legend>Test conditions</legend>
+        <label>Practitioner<input id="cAssessor"></label>
+        <label>Belt speed<span class="row"><input id="speed" type="number" step="0.1" min="0" value="10"><select id="speedUnit"><option value="kmh">km/h</option><option value="mph">mph</option><option value="ms">m/s</option></select></span></label>
+        <label>Gradient (%)<input id="gradient" type="number" step="0.5" value="1"></label>
+        <label>Footwear<input id="footwear"></label>
+        <label>Familiarisation<input id="familiar" placeholder="e.g. 8 min warm-up to test speed"></label>
+        <label>Notes<textarea id="sessionNotes" rows="2"></textarea></label>
+      </fieldset>
+    </div>
+    <div class="dfoot"><button value="ok" class="primary">Done</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgMDC">
+  <form method="dialog">
+    <div class="dh">Measurement error</div>
+    <p class="dnote">Minimal detectable change (MDC95) for each measure, from the Marjon reliability study. Retest changes at or beyond these values are marked in the report. Leave blank until the values are known.</p>
+    <div id="mdcGrid" class="mdcgrid"></div>
+    <div class="dfoot"><button value="ok" class="primary">Done</button></div>
+  </form>
+</dialog>
+
+
+<dialog id="dlgHelp">
+  <form method="dialog">
+    <div class="dh">Capture protocol and shortcuts</div>
+    <div class="helpgrid">
+      <div>
+        <h5>Cameras</h5>
+        <ul><li>One side camera per leg (or one camera, two trials at the same speed) and one rear camera.</li>
+        <li>200 fps or more, shutter 1/1000 s or faster, bright flicker-free light.</li>
+        <li>Fixed, levelled tripods on marked floor positions, square to the plane, 3–5 m away, zoomed in.</li>
+        <li>Calibrate once on the belt (tape marks for side views, belt width for the rear) and save each camera as a station.</li></ul>
+        <h5>Markers</h5>
+        <ul><li><b>Side:</b> acromion, greater trochanter, lateral femoral condyle, lateral malleolus, heel and 5th metatarsal head on the shoe (same height).</li>
+        <li><b>Rear:</b> left and right PSIS, mid-thigh, posterior knee and mid-calcaneus.</li></ul>
+        <h5>Running</h5>
+        <ul><li>Standard familiarisation, fixed test speed, 1% gradient, shoes recorded.</li>
+        <li>A short standing clip in each side view for the foot-angle reference.</li>
+        <li>At least 10 consecutive strides per view.</li></ul>
+      </div>
+      <div>
+        <h5>Workflow</h5>
+        <ol><li>Session details, then open each video.</li><li>Check the station calibration or calibrate (C).</li><li>Process all views, or per view: Auto-label (A), Track (T), Events (E), Calculate (Enter).</li><li>Check every contact and toe-off frame by frame and nudge with [ and ].</li><li>Save the session (Ctrl+S). It is also the file you load as the previous session at a retest.</li><li>Report (Ctrl+R): pick up to three key findings, write the summary, print or save as PDF.</li></ol>
+        <h5>Shortcuts</h5>
+        <table class="keys"><tr><td>← →</td><td>Previous / next frame (Shift ×10)</td></tr><tr><td>Home End</td><td>Start / end of range</td></tr><tr><td>Space</td><td>Play / pause</td></tr><tr><td>Wheel, drag</td><td>Zoom at cursor, pan</td></tr><tr><td>F</td><td>Fit image</td></tr><tr><td>1 2 3</td><td>Left, right, rear view</td></tr><tr><td>P C</td><td>Place, calibrate</td></tr><tr><td>A T E</td><td>Auto-label, track, events</td></tr><tr><td>[ ] Del</td><td>Nudge, delete selected event</td></tr><tr><td>Esc</td><td>Stop tracking</td></tr></table>
+        <p class="dim small">Values are 2D image-plane measures at the tested speed. Measurement error (MDC) is entered once known from the Marjon reliability study.</p>
+      </div>
+    </div>
+    <div class="dfoot"><button value="ok" class="primary">Close</button></div>
+  </form>
+</dialog>
+
+<div id="rOverlay" hidden>
+  <div class="rbar">
+    <b>Report</b><span class="dim" id="rStatus"></span><div class="grow"></div>
+    <button class="tbtn" id="rCSV">Stride data (CSV)</button>
+    <button class="tbtn" id="rPrint">Print / PDF</button>
+    <button class="tbtn" id="rClose">Close</button>
+  </div>
+  <div class="rbody">
+    <aside class="rside">
+      <div class="ph">Key findings <span class="dim">(up to 3)</span></div>
+      <div id="kfList" class="kflist"></div>
+      <div class="ph">Practitioner summary and agreed actions</div>
+      <textarea id="practSummary" rows="9" placeholder="Written in the practitioner's words; appears in the report as typed."></textarea>
+      <div class="ph">Comparison</div>
+      <div id="rCompare" class="small dim"></div>
+    </aside>
+    <div class="rscroll"><div id="report"></div></div>
+  </div>
+</div>
+
+<input type="file" id="fVideo" accept="video/*" hidden>
+<input type="file" id="fSession" accept=".json,application/json" hidden>
+<input type="file" id="fPrev" accept=".json,application/json" hidden>
+<script>
+/*JS*/
+</script>
+</body>
+</html>
