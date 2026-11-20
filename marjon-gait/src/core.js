@@ -304,30 +304,51 @@ function detectEvents(v) {
   const [a, b] = st.range, fps = st.capFps, minC = Math.round((st.type === 'side' ? 0.08 : 0.04) * fps), gap = Math.max(1, Math.round(0.01 * fps));
   if (st.type === 'side') {
     const H = series(st, 'heel', false), T = series(st, 'toe', false), dir = sideDirection(st);
-    const bh = pct(Array.from(H.Y.slice(a, b + 1)), 5), bt = pct(Array.from(T.Y.slice(a, b + 1)), 5);
-    const c = new Array(st.nFrames).fill(false); for (let i = a; i <= b; i++) c[i] = H.Y[i] < bh + set.tol || T.Y[i] < bt + set.tol;
-    const Tf = { X: filterSegments(T.X, 25, fps) }, vb = speedMS();
-    const IC = [], TO = [], Ty = filterSegments(T.Y, 25, fps);
-    for (const [s0, e] of runs(c, a, b, minC, gap)) {
-      if (s0 === a || e >= b) continue;
+    const Hy = filterSegments(H.Y, 25, fps), Ty = filterSegments(T.Y, 25, fps);
+    // contact threshold: the user tolerance, widened for real footage to 6% of each marker's vertical range
+    const band = Y => { const a5 = pct(Array.from(Y.slice(a, b + 1)), 5), a95 = pct(Array.from(Y.slice(a, b + 1)), 95); return [a5, Math.max(set.tol, 0.06 * (a95 - a5))]; };
+    const [bh, th] = band(Hy), [bt, tt] = band(Ty);
+    const c = new Array(st.nFrames).fill(false); for (let i = a; i <= b; i++) c[i] = Hy[i] < bh + th || Ty[i] < bt + tt;
+    const Tf = filterSegments(T.X, 25, fps), vx = i => (Tf[i + 1] - Tf[i - 1]) * dir * fps / 2;
+    const IC = [], TO = [], maxStep = Math.max(3, Math.round(0.03 * fps)), cr = runs(c, a, b, minC, Math.max(gap, Math.round(0.06 * fps))).filter(([s0, e]) => s0 !== a && e < b);
+    // belt speed seen in the video: the toe moves back with the belt mid-stance (independent of the speed typed in)
+    const vs = []; for (const [s0, e] of cr) for (let i = Math.round(s0 + 0.35 * (e - s0)); i <= Math.round(s0 + 0.65 * (e - s0)); i++) if (Number.isFinite(vx(i))) vs.push(-vx(i));
+    const vbm = vs.length ? median(vs) : 0;
+    cr.forEach(([s0, e], ri) => {
+      const lim = Math.min(b - 1, ri + 1 < cr.length ? cr[ri + 1][0] - 1 : b - 1, s0 + Math.round(0.6 * fps));   // toe-off can come after the height band ends
       // contact: step forward while the triggering marker is still descending
-      let s = s0; const trig = H.Y[s0] < bh + set.tol ? H.Y : T.Y;
-      for (let k = 0; k < 3 && trig[s + 1] < trig[s] - 0.0005; k++) s++;
-      // toe-off: toe rises off its stance plateau, then step back to where the rise began
-      let pl = Infinity; for (let i = s; i <= e; i++) if (Ty[i] < pl) pl = Ty[i];
-      let to = e + 1;
-      for (let i = s + minC; i <= e + 1; i++) if (Ty[i] > pl + set.tol) { to = i; break; }
-      while (to > s + minC && Ty[to - 1] > pl + 0.1 * set.tol) to--;
-      if (vb > 0) for (let i = s + minC; i < to; i++) { const vx = (Tf.X[i + 1] - Tf.X[i - 1]) * dir * fps / 2; if (vx > -0.5 * vb) { to = i; break; } }
+      // the heel can sit at a different height from stride to stride (e.g. a double heel marker), so also test it against its own lowest point this stride
+      const w0 = Math.max(a + 1, TO.length ? TO[TO.length - 1] + 1 : a + 1, s0 - Math.round(0.2 * fps)); let hm = Infinity; for (let i = w0; i <= e; i++) if (Hy[i] < hm) hm = Hy[i];
+      let s = s0, trig = Hy[s0] < bh + th ? Hy : Ty;
+      for (let i = w0; i < s0; i++) if (Hy[i] < hm + th) { s = i; trig = Hy; break; }
+      for (let k = 0; k < maxStep && trig[s + 1] < trig[s] - 0.0005; k++) s++;
+      // toe-off: forefoot leaves its stance level, or stops moving back with the belt, whichever is first
+      let i0 = s; while (i0 < e && Ty[i0] > bt + tt) i0++;   // heel strikers: wait for the forefoot to come down
+      const lo = Math.max(s + minC, i0), flat = []; for (let i = i0; i <= e; i++) flat.push(Ty[i]);
+      const pl = flat.length ? pct(flat, 20) : bt, up = Math.max(tt, set.tol * 2);
+      const hold = Math.max(1, Math.round(0.02 * fps)), lasts = (i, f) => { for (let k = 0; k < hold; k++) if (!f(i + k)) return false; return true; };   // ignore one-frame glitches
+      let to = lim; for (let i = lo; i <= lim; i++) if (lasts(i, j => Ty[j] > pl + up)) { to = i; break; }
+      while (to > lo && Ty[to - 1] < Ty[to] - 1e-4) to--;   // back to where the rise began
+      if (vbm > 0) for (let i = lo; i < to; i++) if (lasts(i, j => -vx(j) < 0.5 * vbm)) { to = i; break; }
       IC.push(s); TO.push(to);
-    }
+    });
+    st.belt = { video: vbm, entered: speedMS() };
     st.ev = { IC, TO };
   } else {
     const out = {};
     for (const [k, id] of [['L', 'lHeel'], ['R', 'rHeel']]) {
-      const H = series(st, id, false), bh = pct(Array.from(H.Y.slice(a, b + 1)), 5), c = new Array(st.nFrames).fill(false);
-      for (let i = a; i <= b; i++) c[i] = H.Y[i] < bh + set.tol;
-      out[k] = runs(c, a, b, minC, gap).filter(r => r[0] !== a).map(r => { let s = r[0]; for (let j = 0; j < 3 && H.Y[s + 1] < H.Y[s] - 0.0005; j++) s++; return s; });
+      // per swing cycle: the heel's own lowest point that cycle sets the contact level, so a marker that sits a little higher or lower from stride to stride still works
+      const Y = filterSegments(series(st, id, false).Y, 25, fps), seg = Array.from(Y.slice(a, b + 1)).filter(Number.isFinite), lo5 = pct(seg, 5), hi95 = pct(seg, 95), rng = hi95 - lo5;
+      const th = Math.max(set.tol, 0.08 * rng), sep = Math.round(0.3 * fps), ms = Math.max(3, Math.round(0.03 * fps)), pk = [];
+      for (let i = a + 1; i < b; i++) if (Y[i] > lo5 + 0.5 * rng && Y[i] >= Y[i - 1] && Y[i] > Y[i + 1]) { if (pk.length && i - pk[pk.length - 1] < sep) { if (Y[i] > Y[pk[pk.length - 1]]) pk[pk.length - 1] = i; } else pk.push(i); }
+      out[k] = [];
+      for (let j = 0; j < pk.length; j++) {
+        const e = j + 1 < pk.length ? pk[j + 1] : b; let m = Infinity; for (let i = pk[j]; i <= e; i++) if (Y[i] < m) m = i === i && Y[i];
+        let s = -1; for (let i = pk[j]; i <= e; i++) if (Y[i] < m + th) { s = i; break; }
+        if (s < 0 || (j + 1 >= pk.length && e - s < minC)) continue;
+        for (let q = 0; q < ms && Y[s + 1] < Y[s] - 0.0005; q++) s++;
+        out[k].push(s);
+      }
     }
     st.ev = out;
   }
@@ -367,10 +388,13 @@ function computeSide(v) {
     if (r.excluded) for (const m of METRICS_SIDE) if (!['strideTime', 'cadence', 'strideLength', 'contactTime', 'dutyFactor'].includes(m.id)) r[m.id] = NaN;
     rows.push(r);
   }
-  const sum = summarise(rows.filter(r => !r.excluded || true), METRICS_SIDE.map(m => m.id));
+  // a stride whose timing is far from the runner's typical stride is almost always a mis-detected event: leave it out of the averages
+  const mCT = median(rows.map(r => r.contactTime).filter(Number.isFinite)), mST = median(rows.map(r => r.strideTime).filter(Number.isFinite));
+  for (const r of rows) if (rows.length >= 4 && (Math.abs(r.strideTime - mST) > 0.2 * mST || (Number.isFinite(r.contactTime) && Math.abs(r.contactTime - mCT) > 0.25 * mCT))) r.outlier = true;
+  const sum = summarise(rows.filter(r => !r.outlier), METRICS_SIDE.map(m => m.id));
   let strike = null;
   if (st.standing && Number.isFinite(sum.footAngle.mean)) { const fa = sum.footAngle.mean; strike = fa > 8 ? 'Rearfoot' : fa >= -1.6 ? 'Midfoot' : 'Forefoot'; }
-  return { rows, sum, strike, dir, n: rows.length, excluded: rows.filter(r => r.excluded).length, standing: st.standing };
+  return { rows, sum, strike, dir, n: rows.length - rows.filter(r => r.outlier).length, outliers: rows.filter(r => r.outlier).map(r => r.ic), excluded: rows.filter(r => r.excluded).length, standing: st.standing };
 }
 function computeRear() {
   const st = S.views.rear, fps = st.capFps, g = id => series(st, id, true);
@@ -400,4 +424,4 @@ function computeRear() {
 // accuracy targets used by the demo check and the automated tests
 const ACCURACY = { ms: 15, 'steps/min': 1, '%': 2, m: 0.03, '°': 2, cm: 1 };
 function tolOf(m) { return ACCURACY[m.unit] ?? 1; }
-function medianRow(rows, key) { const ok = rows.filter(r => Number.isFinite(r[key]) && !r.excluded); if (!ok.length) return null; const m = median(ok.map(r => r[key])); return ok.reduce((a, b) => Math.abs(b[key] - m) < Math.abs(a[key] - m) ? b : a); }
+function medianRow(rows, key) { const ok = rows.filter(r => Number.isFinite(r[key]) && !r.excluded && !r.outlier); if (!ok.length) return null; const m = median(ok.map(r => r[key])); return ok.reduce((a, b) => Math.abs(b[key] - m) < Math.abs(a[key] - m) ? b : a); }

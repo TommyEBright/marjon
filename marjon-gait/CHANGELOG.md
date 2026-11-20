@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.3 (November 2026)
+
+Tuned on real lab footage (100 Hz greyscale MJPEG, three speeds, three views).
+
+- New tracker. Bright spots that stay put (console lights, belt glare) are ignored. All markers are matched together each frame, so two markers can no longer jump onto the same spot, and the search area grows with marker speed.
+- Heel and forefoot are tracked relative to the ankle (the shoe is treated as rigid), which stops them swapping onto the other foot, a double heel marker or belt reflections.
+- Markers touching belt glare are still found from their bright centre.
+- Clicks snap to the centre of the nearest marker. Auto-label asks you to click the markers when it sees more bright spots than expected.
+- Event detection copes with real marker noise: contact level scales with each marker's movement, toe-off is the first of the forefoot lifting or no longer moving back with the belt, and the heel is checked against its own lowest point each stride. Belt speed is measured from the video.
+- Rear view contacts are found cycle by cycle, so a heel marker sitting slightly higher or lower between strides no longer drops contacts.
+- Strides with timing far from the runner's typical stride are left out of the averages and listed for checking.
+
 ## 0.2.2 (November 2026)
 
 - Opens AVI files. MJPEG (with or without Huffman tables) and uncompressed colour, greyscale and paletted AVIs are read frame by frame straight from the file, including OpenDML files over 1 GB. The stored frame rate comes from the file header.

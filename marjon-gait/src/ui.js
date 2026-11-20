@@ -21,7 +21,7 @@ function attachSource(v, src, name, keep = false) {
   const st = S.views[v];
   if (src.fps) { st.fileFps = src.fps; if (!keep) st.capFps = src.fps; }
   const n = src.nFrames || Math.max(1, Math.floor(src.duration * st.fileFps)), sameSize = st.src && st.w === src.w && st.h === src.h && st.nFrames === n;
-  st.src = src; st.name = name; st.w = src.w; st.h = src.h;
+  st.src = src; st.name = name; st.mask = null; st.w = src.w; st.h = src.h;
   st.off = document.createElement('canvas'); st.off.width = src.w; st.off.height = src.h;
   st.offCtx = st.off.getContext('2d', { willReadFrequently: true });
   st.drawn = -1; st.vt = null;
@@ -131,8 +131,9 @@ function detectBlobs(ctx, w, h) {
 async function autoLabel(v) {
   const st = S.views[v]; if (!st.src) return false;
   if (st.drawn !== st.frame) { await st.src.draw(st.frame, st.offCtx); st.drawn = st.frame; }
-  const need = MARKERS[st.type].length, blobs = detectBlobs(st.offCtx, st.w, st.h);
-  if (blobs.length < need) { ui.status(`${VIEWS[v].label}: found ${blobs.length} of ${need} markers on frame ${st.frame}. Move to a frame where every marker is visible, or place the missing ones by hand.`, 'warn'); return false; }
+  if (!st.mask || st.mask.key !== `${st.name}|${st.range.join('-')}`) { await buildStaticMask(v); await st.src.draw(st.frame, st.offCtx); st.drawn = st.frame; }
+  const need = MARKERS[st.type].length, blobs = detectBlobs(st.offCtx, st.w, st.h).filter(b => !isStatic(st, b.x, b.y));
+  if (blobs.length !== need) { ui.status(`${VIEWS[v].label}: found ${blobs.length} bright spots but expected ${need} markers on frame ${st.frame}. Click each marker in turn (clicks snap to the marker centre).`, 'warn'); return false; }
   const b = blobs.slice(0, need).sort((p, q) => p.y - q.y), put = (id, p) => { st.tr[id].x[st.frame] = p.x; st.tr[id].y[st.frame] = p.y; };
   if (st.type === 'side') {
     put('shoulder', b[0]); put('hip', b[1]); put('knee', b[2]);
@@ -148,33 +149,6 @@ async function autoLabel(v) {
   }
   dataChanged(v); ui.status(`${VIEWS[v].label}: ${need} markers labelled on frame ${st.frame}. Check the labels, then track.`, 'ok'); ui.refresh();
   return true;
-}
-
-/* ---------- tracking ---------- */
-async function trackForward(v) {
-  const st = S.views[v]; if (!st.src || st.tracking) return [];
-  const f0 = st.frame, end = st.range[1], set = settings();
-  const act = MARKERS[st.type].map(m => m.id).filter(id => Number.isFinite(st.tr[id].x[f0]));
-  if (!act.length) { ui.status('Label or place markers on this frame first.', 'warn'); return []; }
-  st.tracking = true; st.stop = false; updateToolbar();
-  const lost = {}, stopped = {}, vel = {}, last = {}, msgs = [];
-  for (const id of act) { const t = st.tr[id]; lost[id] = 0; last[id] = [t.x[f0], t.y[f0]]; vel[id] = Number.isFinite(t.x[f0 - 1]) ? [t.x[f0] - t.x[f0 - 1], t.y[f0] - t.y[f0 - 1]] : [0, 0]; }
-  try {
-    for (let f = f0 + 1; f <= end && !st.stop; f++) {
-      await st.src.draw(f, st.offCtx); st.drawn = f;
-      for (const id of act) {
-        if (stopped[id]) continue;
-        const t = st.tr[id], k = lost[id] + 1, pred = [last[id][0] + vel[id][0] * k, last[id][1] + vel[id][1] * k];
-        const hit = findMarker(st.offCtx, pred, set.radius * (1 + 0.5 * lost[id]), set.contrast);
-        if (hit) { vel[id] = [(hit[0] - last[id][0]) / k, (hit[1] - last[id][1]) / k]; last[id] = hit; t.x[f] = hit[0]; t.y[f] = hit[1]; lost[id] = 0; }
-        else { t.x[f] = NaN; t.y[f] = NaN; if (++lost[id] > 6) { stopped[id] = true; msgs.push(`${SHORT[id]} (frame ${f - 6})`); } }
-      }
-      if (f % 12 === 0 || f === end) { st.frame = f; ui.busy(true, `Tracking ${VIEWS[v].label.toLowerCase()} · frame ${f}`, (f - f0) / Math.max(1, end - f0)); if (v === active) { drawVP(); drawTL(); updateTransport(); } await sleep(0); }
-      if (act.every(id => stopped[id])) break;
-    }
-  } finally { st.tracking = false; ui.busy(false); dataChanged(v); updateToolbar(); }
-  ui.status(msgs.length ? `${VIEWS[v].label}: tracking lost ${msgs.join(', ')}. Go to that frame, click the marker and track again.` : `${VIEWS[v].label}: tracking complete. Scrub through to check.`, msgs.length ? 'warn' : 'ok');
-  ui.refresh(); return msgs;
 }
 
 /* ---------- calculation ---------- */
@@ -295,7 +269,7 @@ function vpClick(e) {
   let hit = null, best = 10 * dpr;
   for (const m of MARKERS[st.type]) { const t = st.tr[m.id]; if (!Number.isFinite(t.x[st.frame])) continue; const d = Math.hypot(st.vt.ox + t.x[st.frame] * st.vt.s - cx, st.vt.oy + t.y[st.frame] * st.vt.s - cy); if (d < best) { best = d; hit = m.id; } }
   if (hit && hit !== st.sel) { st.sel = hit; ui.refresh(); return; }
-  const t = st.tr[st.sel]; t.x[st.frame] = x; t.y[st.frame] = y; dataChanged(active);
+  const t = st.tr[st.sel], [sx, sy] = snapToMarker(st, x, y, Math.max(8, 12 / st.vt.s)); t.x[st.frame] = sx; t.y[st.frame] = sy; dataChanged(active);
   const list = MARKERS[st.type], i0 = list.findIndex(m => m.id === st.sel);
   for (let j = 1; j < list.length; j++) { const m = list[(i0 + j) % list.length]; if (!Number.isFinite(st.tr[m.id].x[st.frame])) { st.sel = m.id; break; } }
   ui.refresh();
@@ -463,7 +437,7 @@ function renderData() {
   let h = `<div class="pbar"><button class="pb acc" id="dCalc" ${st.src ? '' : 'disabled'}>Calculate</button><button class="pb" id="dAll">Calculate all views</button></div>`;
   if (!r) { el.innerHTML = h + `<div class="pnote">No results yet for this view.</div>`; bindData(); return; }
   if (side) {
-    h += `<div class="pnote">${r.n} strides${r.excluded ? ` · ${r.excluded} with tracking gaps (angles excluded)` : ''} · running ${r.dir > 0 ? 'left to right' : 'right to left'} on screen${r.orderWarn.length ? `<br><span style="color:var(--warn)">Check strides from frame ${r.orderWarn.join(', ')}: each needs one toe-off.</span>` : ''}</div>`;
+    h += `<div class="pnote">${r.n} strides${r.excluded ? ` · ${r.excluded} with tracking gaps (angles excluded)` : ''}${r.outliers.length ? `<br><span style="color:var(--warn)">Left out of the averages (timing far from typical, check the events): stride${r.outliers.length > 1 ? 's' : ''} from frame ${r.outliers.join(', ')}.</span>` : ''} · running ${r.dir > 0 ? 'left to right' : 'right to left'} on screen${r.orderWarn.length ? `<br><span style="color:var(--warn)">Check strides from frame ${r.orderWarn.join(', ')}: each needs one toe-off.</span>` : ''}</div>`;
     h += `<table class="grid"><tr><th>Measure</th><th class="n">Mean</th><th class="n">SD</th>${st.truth ? '<th class="n">True</th><th class="n">Err</th>' : ''}</tr>`;
     for (const m of METRICS_SIDE) { const s = r.sum[m.id], t = st.truth ? st.truth[m.id] : null, err = s.mean - t;
       h += `<tr><td>${m.label} <span class="dim">${m.unit}</span></td><td class="n">${pmv(s, m.d)}</td><td class="n">${fmt(s.sd, m.d)}</td>${st.truth ? `<td class="n">${fmt(t, m.d)}</td><td class="n ${Math.abs(err) <= tolOf(m) ? 'pass' : 'fail'}">${fmt(err, m.d + 1)}</td>` : ''}</tr>`; }
