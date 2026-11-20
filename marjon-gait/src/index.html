@@ -115,8 +115,20 @@
 <dialog id="dlgMDC">
   <form method="dialog">
     <div class="dh">Measurement error</div>
-    <p class="dnote">Minimal detectable change (MDC95) for each measure, from the Marjon reliability study. Retest changes at or beyond these values are marked in the report. Leave blank until the values are known.</p>
-    <div id="mdcGrid" class="mdcgrid"></div>
+    <div class="mdcwrap">
+      <section>
+        <h5>Reliability study</h5>
+        <p class="dnote">Load the saved session files from runners tested twice under the same conditions (same speed, shoes and protocol, a few days to a week apart, nothing changed in between). Files are paired by client name and ordered by session date.</p>
+        <div class="pbar" style="border:0;padding:6px 0"><button type="button" class="pb acc" id="relLoad">Load session files…</button><button type="button" class="pb" id="relUse" disabled>Use these MDC values</button><button type="button" class="pb" id="relCSV" disabled>Export results (CSV)</button><button type="button" class="pb" id="relClear">Clear</button></div>
+        <div id="relSummary"></div>
+        <div id="relTable" class="reltable"></div>
+      </section>
+      <section class="mdcset">
+        <h5>MDC values used in reports</h5>
+        <p class="dnote">A retest change at or beyond these values is marked in the report. Fill them from the study above or type them in.</p>
+        <div id="mdcGrid" class="mdcgrid"></div>
+      </section>
+    </div>
     <div class="dfoot"><button value="ok" class="primary">Done</button></div>
   </form>
 </dialog>
@@ -142,7 +154,7 @@
       </div>
       <div>
         <h5>Workflow</h5>
-        <ol><li>Session details, then open each video.</li><li>Check the station calibration or calibrate (C).</li><li>Process all views, or per view: Auto-label (A), Track (T), Events (E), Calculate (Enter).</li><li>Check every contact and toe-off frame by frame and nudge with [ and ].</li><li>Save the session (Ctrl+S). It is also the file you load as the previous session at a retest.</li><li>Report (Ctrl+R): pick up to three key findings, write the summary, print or save as PDF.</li></ol>
+        <ol><li>Session details, then open each video (MP4, MOV or AVI).</li><li>Check the station calibration or calibrate (C).</li><li>Process all views, or per view: Auto-label (A), Track (T), Events (E), Calculate (Enter).</li><li>Check every contact and toe-off frame by frame and nudge with [ and ].</li><li>Save the session (Ctrl+S). It is also the file you load as the previous session at a retest.</li><li>Report (Ctrl+R): pick up to three key findings, write the summary, print or save as PDF.</li></ol>
         <h5>Shortcuts</h5>
         <table class="keys"><tr><td>← →</td><td>Previous / next frame (Shift ×10)</td></tr><tr><td>Home End</td><td>Start / end of range</td></tr><tr><td>Space</td><td>Play / pause</td></tr><tr><td>Wheel, drag</td><td>Zoom at cursor, pan</td></tr><tr><td>F</td><td>Fit image</td></tr><tr><td>1 2 3</td><td>Left, right, rear view</td></tr><tr><td>P C</td><td>Place, calibrate</td></tr><tr><td>A T E</td><td>Auto-label, track, events</td></tr><tr><td>[ ] Del</td><td>Nudge, delete selected event</td></tr><tr><td>Esc</td><td>Stop tracking</td></tr></table>
         <p class="dim small">Values are 2D image-plane measures at the tested speed. Measurement error (MDC) is entered once known from the Marjon reliability study.</p>
@@ -172,8 +184,9 @@
   </div>
 </div>
 
-<input type="file" id="fVideo" accept="video/*" hidden>
+<input type="file" id="fVideo" accept="video/*,.avi,.AVI,.mp4,.mov" hidden>
 <input type="file" id="fSession" accept=".json,application/json" hidden>
+<input type="file" id="fRel" accept=".json,application/json" multiple hidden>
 <input type="file" id="fPrev" accept=".json,application/json" hidden>
 <script>
 /*JS*/

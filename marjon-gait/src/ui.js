@@ -19,7 +19,8 @@ function placeholderSource(w, h, duration) {
 }
 function attachSource(v, src, name, keep = false) {
   const st = S.views[v];
-  const n = Math.max(1, Math.floor(src.duration * st.fileFps)), sameSize = st.src && st.w === src.w && st.h === src.h && st.nFrames === n;
+  if (src.fps) { st.fileFps = src.fps; if (!keep) st.capFps = src.fps; }
+  const n = src.nFrames || Math.max(1, Math.floor(src.duration * st.fileFps)), sameSize = st.src && st.w === src.w && st.h === src.h && st.nFrames === n;
   st.src = src; st.name = name; st.w = src.w; st.h = src.h;
   st.off = document.createElement('canvas'); st.off.width = src.w; st.off.height = src.h;
   st.offCtx = st.off.getContext('2d', { willReadFrequently: true });
@@ -28,7 +29,7 @@ function attachSource(v, src, name, keep = false) {
 }
 function resetFrames(v) {
   const st = S.views[v];
-  st.nFrames = Math.max(1, Math.floor(st.src.duration * st.fileFps));
+  st.nFrames = st.src.nFrames || Math.max(1, Math.floor(st.src.duration * st.fileFps));
   st.range = [0, st.nFrames - 1]; st.tr = {};
   for (const m of MARKERS[st.type]) st.tr[m.id] = { x: new Float64Array(st.nFrames).fill(NaN), y: new Float64Array(st.nFrames).fill(NaN) };
   st.ev = st.type === 'side' ? { IC: [], TO: [] } : { L: [], R: [] }; st.res = null; st.selEv = null; st.frame = 0; st.drawn = -1; st.ver++;
@@ -53,13 +54,32 @@ $('#fVideo').onchange = async e => {
   const f = e.target.files[0]; if (!f) return; const v = pendingVideo || active, st = S.views[v];
   try {
     ui.status(`Opening ${f.name}…`);
-    const src = await videoSource(v, f); const linking = st.src && st.src.kind === 'none';
+    const src = AVI.isAVI(f) ? await openAVI(f) : await videoSource(v, f); if (!src) return;
+    const linking = st.src && st.src.kind === 'none';
     attachSource(v, src, f.name, linking); st.truth = null;
     const applied = !calibOK(st) && applyStation(v, true);
     setActive(v);
-    if (!applied) ui.status(`${VIEWS[v].label}: ${f.name} (${src.w}×${src.h}). Check the frame rates in Properties, then calibrate.`);
+    if (!applied) ui.status(src.avi ? `${VIEWS[v].label}: ${f.name} (${src.codec} AVI, ${src.w}×${src.h}, ${src.nFrames} frames at ${+src.fps.toFixed(2)} fps from the file). Check the capture rate in Properties, then calibrate.`
+      : `${VIEWS[v].label}: ${f.name} (${src.w}×${src.h}). Check the frame rates in Properties, then calibrate.`);
   } catch (err) { ui.status(err.message, 'warn'); }
 };
+async function openAVI(f) {
+  try { return await AVI.source(f); }
+  catch (e) {
+    if (!e.codec) throw e;
+    ui.status(`${f.name} uses the ${e.codec} codec, which browsers cannot read. Converting it in the browser (first use downloads the converter, about 30 MB)…`);
+    ui.busy(true, `Converting ${f.name}`, 0);
+    try {
+      const info = await AVI.parse(f), fps = info.rate && info.scale ? info.rate / info.scale : 1e6 / info.usPerFrame;
+      const conv = await AVI.convert(f, p => ui.busy(true, `Converting ${f.name} · ${Math.round(100 * clamp(p, 0, 1))}%`, clamp(p, 0, 1)));
+      S.views[pendingVideo || active].fileFps = fps;
+      const src = await videoSource(pendingVideo || active, conv);
+      return Object.assign(src, { avi: true, codec: `${e.codec} (converted)`, fps, nFrames: info.frames.length });
+    }
+    catch (err) { ui.status(`Could not convert ${f.name} (${e.codec}). Check the internet connection, or convert it to MP4 (H.264) or MJPEG AVI first, e.g. with HandBrake or ffmpeg.`, 'warn'); return null; }
+    finally { ui.busy(false); }
+  }
+}
 function loadDemo(v, quiet) {
   const st = S.views[v]; st.capFps = 200; st.fileFps = 200;
   attachSource(v, demoSource(v), 'Demo runner (synthetic)');
@@ -202,7 +222,7 @@ function fitVT(st) { const s = Math.min(vp.width / st.w, vp.height / st.h) * 0.9
 function upDir(st) { const [p1, p2] = st.calib.p, L = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]), ex = [(p2[0] - p1[0]) / L, (p2[1] - p1[1]) / L]; return { ex, up: [ex[1], -ex[0]], cmpx: st.calib.cm / L }; }
 function drawVP() {
   const resized = sizeCanvas(vp), st = cur(), ctx = vp.getContext('2d'), dpr = devicePixelRatio;
-  ctx.fillStyle = '#0e0f10'; ctx.fillRect(0, 0, vp.width, vp.height);
+  ctx.fillStyle = '#040b17'; ctx.fillRect(0, 0, vp.width, vp.height);
   const empty = $('#vpEmpty'); empty.hidden = !!st.src;
   if (!st.src) { empty.innerHTML = `<div class="big">${VIEWS[active].label} view</div><div>No video loaded.</div><div class="acts"><button id="eOpen">Open video…</button><button id="eDemo">Load demo runner</button><button id="eDemoAll">Demo in all views</button></div>`;
     $('#eOpen').onclick = () => openVideo(active); $('#eDemo').onclick = () => loadDemo(active); $('#eDemoAll').onclick = loadDemoAll; return; }
@@ -223,7 +243,7 @@ function drawVP() {
   // HUD
   ctx.font = `600 ${11 * dpr}px Segoe UI, system-ui`; ctx.textAlign = 'left';
   const hud = `${VIEWS[active].label.toUpperCase()}   ·   FRAME ${st.frame}   ·   ${(st.frame / st.capFps).toFixed(3)} s`;
-  const tw = ctx.measureText(hud).width; ctx.fillStyle = 'rgba(10,11,12,.72)'; ctx.fillRect(8 * dpr, 8 * dpr, tw + 16 * dpr, 22 * dpr);
+  const tw = ctx.measureText(hud).width; ctx.fillStyle = 'rgba(3,21,47,.82)'; ctx.fillRect(8 * dpr, 8 * dpr, tw + 16 * dpr, 22 * dpr);
   ctx.fillStyle = '#d9dde1'; ctx.fillText(hud, 16 * dpr, 23 * dpr);
   const ev = eventsAt(st, st.frame);
   if (ev.length) { ctx.font = `700 ${11 * dpr}px Segoe UI, system-ui`; const t = ev.map(e => e.label.toUpperCase()).join('  ·  '), w2 = ctx.measureText(t).width;
@@ -243,11 +263,11 @@ function drawSkeleton(ctx, st, f, T, dpr, labels) {
   ctx.font = `${10 * dpr}px Segoe UI, system-ui`; ctx.textAlign = 'left';
   for (const m of MARKERS[st.type]) { const p = pos(m.id); if (!p) continue; const isSel = labels && m.id === st.sel;
     ctx.strokeStyle = m.c; ctx.lineWidth = (isSel ? 2.4 : 1.6) * dpr; ctx.beginPath(); ctx.arc(p[0], p[1], (isSel ? 8 : 5.5) * dpr, 0, 7); ctx.stroke();
-    if (labels) { ctx.fillStyle = 'rgba(10,11,12,.7)'; const t = SHORT[m.id], w = ctx.measureText(t).width; ctx.fillRect(p[0] + 9 * dpr, p[1] - 7 * dpr, w + 6 * dpr, 13 * dpr); ctx.fillStyle = isSel ? '#fff' : m.c; ctx.fillText(t, p[0] + 12 * dpr, p[1] + 3 * dpr); } }
+    if (labels) { ctx.fillStyle = 'rgba(3,21,47,.78)'; const t = SHORT[m.id], w = ctx.measureText(t).width; ctx.fillRect(p[0] + 9 * dpr, p[1] - 7 * dpr, w + 6 * dpr, 13 * dpr); ctx.fillStyle = isSel ? '#fff' : m.c; ctx.fillText(t, p[0] + 12 * dpr, p[1] + 3 * dpr); } }
 }
 function eventsAt(st, f) {
-  const out = []; if (st.type === 'side') { if (st.ev.IC.includes(f)) out.push({ label: 'Initial contact', col: '#3ccf7a' }); if (st.ev.TO.includes(f)) out.push({ label: 'Toe-off', col: '#ff9f2e' }); }
-  else { if (st.ev.L.includes(f)) out.push({ label: 'Left contact', col: '#3ccf7a' }); if (st.ev.R.includes(f)) out.push({ label: 'Right contact', col: '#ff9f2e' }); }
+  const out = []; if (st.type === 'side') { if (st.ev.IC.includes(f)) out.push({ label: 'Initial contact', col: '#86c440' }); if (st.ev.TO.includes(f)) out.push({ label: 'Toe-off', col: '#ff2d8f' }); }
+  else { if (st.ev.L.includes(f)) out.push({ label: 'Left contact', col: '#86c440' }); if (st.ev.R.includes(f)) out.push({ label: 'Right contact', col: '#ff2d8f' }); }
   return out;
 }
 let drag = null;
@@ -287,38 +307,38 @@ const tl = $('#tl'); let tlLayout = null, tlDrag = null;
 function trackRuns(t, n) { const out = []; let i = 0; while (i < n) { if (!Number.isFinite(t.x[i])) { i++; continue; } const s = i; while (i < n && Number.isFinite(t.x[i])) i++; out.push([s, i - 1]); } return out; }
 function drawTL() {
   sizeCanvas(tl); const ctx = tl.getContext('2d'), dpr = devicePixelRatio, W = tl.width, H = tl.height, st = cur();
-  ctx.fillStyle = '#1e2124'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#0a1b36'; ctx.fillRect(0, 0, W, H);
   const lx = 104 * dpr, rx = W - 10 * dpr, mk = MARKERS[st.type], laneH = 12 * dpr, yR = 0, hR = 20 * dpr, yE = hR, hE = 20 * dpr, yC = yE + hE + 4 * dpr, yT = yC + mk.length * laneH + 6 * dpr, hT = H - yT - 4 * dpr;
   tlLayout = { lx, rx, yR, hR, yE, hE, yC, laneH, yT, hT };
-  ctx.fillStyle = '#26292d'; ctx.fillRect(0, 0, lx - 4 * dpr, H);
-  ctx.font = `${10 * dpr}px Segoe UI, system-ui`; ctx.fillStyle = '#8f979f'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#0f2546'; ctx.fillRect(0, 0, lx - 4 * dpr, H);
+  ctx.font = `${10 * dpr}px Segoe UI, system-ui`; ctx.fillStyle = '#93a7c1'; ctx.textAlign = 'left';
   ctx.fillText('Frames', 8 * dpr, yR + 14 * dpr); ctx.fillText('Events', 8 * dpr, yE + 14 * dpr); ctx.fillText(st.type === 'side' ? 'Foot height' : 'Heel height', 8 * dpr, yT + 12 * dpr);
   mk.forEach((m, i) => { ctx.fillStyle = m.id === st.sel ? '#fff' : '#8f979f'; ctx.fillText(SHORT[m.id], 8 * dpr, yC + i * laneH + 10 * dpr); });
   if (!st.src) return;
   const n = st.nFrames, X = f => lx + (f / Math.max(1, n - 1)) * (rx - lx);
   // ruler
-  ctx.fillStyle = '#2b2f33'; ctx.fillRect(lx, yR, rx - lx, hR);
+  ctx.fillStyle = '#0f2546'; ctx.fillRect(lx, yR, rx - lx, hR);
   const stepF = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000].find(sf => (rx - lx) / (n / sf) > 60 * dpr) || 5000;
   ctx.strokeStyle = '#4a5057'; ctx.fillStyle = '#8f979f'; ctx.lineWidth = dpr;
   for (let f = 0; f < n; f += stepF) { const x = X(f); ctx.beginPath(); ctx.moveTo(x, yR + hR - 6 * dpr); ctx.lineTo(x, yR + hR); ctx.stroke(); ctx.fillText(String(f), x + 3 * dpr, yR + 12 * dpr); }
   // range shading
   ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(lx, 0, X(st.range[0]) - lx, H); ctx.fillRect(X(st.range[1]), 0, rx - X(st.range[1]), H);
-  ctx.fillStyle = '#3b8eea'; for (const f of st.range) { const x = X(f); ctx.fillRect(x - 1 * dpr, 0, 2 * dpr, H); ctx.beginPath(); ctx.moveTo(x - 5 * dpr, 0); ctx.lineTo(x + 5 * dpr, 0); ctx.lineTo(x, 7 * dpr); ctx.fill(); }
+  ctx.fillStyle = '#26aee4'; for (const f of st.range) { const x = X(f); ctx.fillRect(x - 1 * dpr, 0, 2 * dpr, H); ctx.beginPath(); ctx.moveTo(x - 5 * dpr, 0); ctx.lineTo(x + 5 * dpr, 0); ctx.lineTo(x, 7 * dpr); ctx.fill(); }
   // events
-  const evCols = st.type === 'side' ? { IC: '#3ccf7a', TO: '#ff9f2e' } : { L: '#3ccf7a', R: '#ff9f2e' };
+  const evCols = st.type === 'side' ? { IC: '#86c440', TO: '#ff2d8f' } : { L: '#86c440', R: '#ff2d8f' };
   ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.moveTo(lx, yE + hE); ctx.lineTo(rx, yE + hE); ctx.stroke();
   for (const k in st.ev) for (const f of st.ev[k]) { const x = X(f), y = yE + (k === 'IC' || k === 'L' ? 3 : 10) * dpr, isSel = st.selEv && st.selEv.k === k && st.selEv.f === f;
     ctx.fillStyle = evCols[k]; ctx.beginPath(); ctx.moveTo(x - 4.5 * dpr, y); ctx.lineTo(x + 4.5 * dpr, y); ctx.lineTo(x, y + 7 * dpr); ctx.fill();
     if (isSel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 * dpr; ctx.stroke(); }
     ctx.fillStyle = evCols[k] + '33'; ctx.fillRect(x - 0.5 * dpr, yC, dpr, yT + hT - yC); }
   // coverage
-  mk.forEach((m, i) => { const y = yC + i * laneH + 1.5 * dpr; ctx.fillStyle = m.id === st.sel ? 'rgba(59,142,234,.15)' : 'rgba(255,255,255,.03)'; ctx.fillRect(lx, y - 1.5 * dpr, rx - lx, laneH);
+  mk.forEach((m, i) => { const y = yC + i * laneH + 1.5 * dpr; ctx.fillStyle = m.id === st.sel ? 'rgba(38,174,228,.16)' : 'rgba(255,255,255,.03)'; ctx.fillRect(lx, y - 1.5 * dpr, rx - lx, laneH);
     ctx.fillStyle = m.c; for (const [a, b] of trackRuns(st.tr[m.id], n)) ctx.fillRect(X(a), y, Math.max(dpr, X(b) - X(a) + dpr), laneH - 3 * dpr); });
   // trace
   if (calibOK(st)) {
     if (!st._trace || st._trace.ver !== st.ver) { const ids = st.type === 'side' ? ['heel', 'toe'] : ['lHeel', 'rHeel']; st._trace = { ver: st.ver, s: ids.map(id => series(st, id, false).Y) }; }
     let lo = Infinity, hi = -Infinity; for (const y of st._trace.s) for (let i = 0; i < n; i++) if (Number.isFinite(y[i])) { lo = Math.min(lo, y[i]); hi = Math.max(hi, y[i]); }
-    const cols = st.type === 'side' ? ['#f2994a', '#eb5757'] : ['#3ccf7a', '#ff9f2e'], Y = v => yT + hT - (v - lo) / Math.max(1e-6, hi - lo) * (hT - 4 * dpr) - 2 * dpr;
+    const cols = st.type === 'side' ? ['#f2994a', '#eb5757'] : ['#86c440', '#ff2d8f'], Y = v => yT + hT - (v - lo) / Math.max(1e-6, hi - lo) * (hT - 4 * dpr) - 2 * dpr;
     st._trace.s.forEach((y, j) => { ctx.strokeStyle = cols[j]; ctx.lineWidth = 1.2 * dpr; ctx.beginPath(); let pen = false; for (let i = 0; i < n; i++) { if (!Number.isFinite(y[i])) { pen = false; continue; } pen ? ctx.lineTo(X(i), Y(y[i])) : ctx.moveTo(X(i), Y(y[i])); pen = true; } ctx.stroke(); });
   }
   // playhead
@@ -376,7 +396,7 @@ function renderTree() {
   for (const v of VKEYS) { const st = S.views[v];
     h += `<div class="ti ${v === active ? 'on' : ''}" data-v="${v}">${IC_CAM}<div style="min-width:0"><div class="nm">${VIEWS[v].label}</div><div class="sub" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${st.src ? esc(st.name) : 'No video'}</div>${pips(st)}</div></div>`; }
   h += `<div class="tg">Comparison</div><div class="ti" style="cursor:default"><svg class="ico" viewBox="0 0 16 16"><path d="M2 12.5l3.5-4 3 2.5 5.5-7"/></svg><div><div class="nm">Previous session</div><div class="sub">${S.prev ? `${esc(S.prev.date)} · ${esc(S.prev.client)}` : 'None loaded'}</div><div style="margin-top:3px"><button class="tlink" id="trPrev">${S.prev ? 'Replace…' : 'Load…'}</button>${S.prev ? ` · <button class="tlink" id="trPrevX">Clear</button>` : ''}</div></div></div>`;
-  h += `<div class="tg">Measurement error</div><div class="ti" id="trMdc"><svg class="ico" viewBox="0 0 16 16"><path d="M8 2v12 M4 5.5h8 M4 10.5h8"/></svg><div><div class="nm">MDC values</div><div class="sub">${nMdc ? `${nMdc} measures set` : 'Not set yet'}</div></div></div>`;
+  h += `<div class="tg">Measurement error</div><div class="ti" id="trMdc"><svg class="ico" viewBox="0 0 16 16"><path d="M8 2v12 M4 5.5h8 M4 10.5h8"/></svg><div><div class="nm">MDC and reliability</div><div class="sub">${nMdc ? `${nMdc} measures set${lsGet('marjonGait.mdcSource.v1').runners ? ` · study n=${lsGet('marjonGait.mdcSource.v1').runners}` : ''}` : 'Not set yet'}</div></div></div>`;
   $('#tree').innerHTML = h;
   $('#tree').querySelectorAll('[data-v]').forEach(el => el.onclick = () => setActive(el.dataset.v));
   $('#trSession').onclick = () => $('#dlgSession').showModal();
@@ -463,8 +483,8 @@ function renderProps() {
   const st = cur(), el = $('#pane-props'), side = st.type === 'side', stn = lsGet(STKEY)[active];
   const row = (k, v) => `<div class="prow"><span class="k">${k}</span>${v}</div>`;
   let h = `<div class="psec"><h4>Video</h4>${row('Source', `<span class="v" title="${esc(st.name)}">${st.src ? esc(st.name) : '–'}</span>`)}${row('Resolution', `<span class="v">${st.src ? `${st.w} × ${st.h}` : '–'}</span>`)}${row('Frames', `<span class="v">${st.src ? st.nFrames : '–'}</span>`)}
-    ${row('Capture rate (fps)', `<input type="number" id="prCap" value="${st.capFps}" min="20" max="2000">`)}${row('Stored rate (fps)', `<input type="number" id="prFile" value="${st.fileFps}" min="1" max="2000">`)}
-    <div class="pnote">Slow-motion clips are often stored at a lower rate than they were captured at. Times use the capture rate.</div>
+    ${row('Capture rate (fps)', `<input type="number" id="prCap" value="${st.capFps}" min="20" max="2000">`)}${row('Stored rate (fps)', st.src && st.src.avi ? `<span class="v">${+st.fileFps.toFixed(3)} (from file)</span>` : `<input type="number" id="prFile" value="${st.fileFps}" min="1" max="2000">`)}
+    <div class="pnote">${st.src && st.src.avi ? `${st.src.codec} AVI, read frame by frame. Stored rate comes from the file header; set the capture rate if the camera recorded faster than it stores.` : 'Slow-motion clips are often stored at a lower rate than they were captured at. Times use the capture rate.'}</div>
     <div class="pbar" style="border:0;padding-top:0"><button class="pb" id="prOpen">${st.src && st.src.kind === 'none' ? 'Link original video…' : 'Open video…'}</button><button class="pb" id="prDemo">Load demo runner</button></div></div>`;
   h += `<div class="psec"><h4>Calibration</h4>${row('Status', `<span class="v">${calibOK(st) ? `${(upDir(st).cmpx * 10).toFixed(2)} mm/px` : 'Not set'}</span>`)}${row('Belt distance (cm)', `<input type="number" id="prCm" value="${st.calib.cm}" min="1">`)}
     <div class="pbar" style="border:0;padding-top:0"><button class="pb" id="prCal">Set on image (C)</button><button class="pb" id="prStSave" ${calibOK(st) ? '' : 'disabled'}>Save as station</button><button class="pb" id="prStApply" ${stn && st.src ? '' : 'disabled'}>Apply station</button></div>
@@ -549,7 +569,7 @@ function mdcItems() { return [...METRICS_SIDE.map(m => ({ id: m.id, label: m.lab
 function openMDC() {
   const mdc = lsGet(MDCKEY);
   $('#mdcGrid').innerHTML = mdcItems().map(m => `<label style="display:contents"><span>${m.label} <span class="dim">(${m.unit})</span></span><input type="number" step="any" min="0" data-mdc="${m.id}" value="${mdc[m.id] ?? ''}"></label>`).join('');
-  $('#dlgMDC').showModal();
+  renderRel(); $('#dlgMDC').showModal();
 }
 $('#dlgMDC').addEventListener('close', () => { const o = {}; document.querySelectorAll('[data-mdc]').forEach(i => { const v = parseFloat(i.value); if (v > 0) o[i.dataset.mdc] = v; }); lsSet(MDCKEY, o); ui.refresh(); });
 $('#dlgSession').addEventListener('close', () => ui.refresh());

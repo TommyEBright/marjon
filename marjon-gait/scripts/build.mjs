@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 const read = f => readFileSync(new URL(`../src/${f}`, import.meta.url), 'utf8');
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const logo = 'data:image/png;base64,' + readFileSync(new URL('../src/assets/logo_white.png', import.meta.url)).toString('base64');
-const js = ['core.js', 'ui.js', 'report.js'].map(read).join('\n');
+const js = ['core.js', 'avi.js', 'ui.js', 'report.js', 'reliability.js'].map(read).join('\n');
 
 const html = read('index.html')
   .replace('/*CSS*/', () => read('styles.css'))

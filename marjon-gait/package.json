@@ -1,6 +1,6 @@
 {
   "name": "marjon-gait",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "private": true,
   "description": "2D treadmill running gait assessment, Plymouth Marjon University",
   "type": "module",

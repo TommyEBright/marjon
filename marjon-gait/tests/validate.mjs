@@ -40,6 +40,36 @@ const out = await page.evaluate(async () => {
   G.openReport(); await G.buildReport();
   const pages = document.querySelectorAll('#report .rpage').length;
   rows.push({ group: 'Report', name: 'Pages built', app: pages, truth: 4, err: pages - 4, tol: 0, unit: 'n' });
+  // ---- reliability statistics ----
+  const R = G.Rel;
+  // Shrout and Fleiss (1979) Table 2: 6 targets x 4 judges. Published ICC(2,1) = 0.29, ICC(3,1) = 0.71
+  const sf = R.icc([[9, 2, 5, 8], [6, 1, 3, 2], [8, 4, 6, 8], [7, 1, 2, 6], [10, 5, 6, 9], [6, 2, 4, 7]]);
+  rows.push({ group: 'Reliability', name: 'ICC(2,1) v Shrout & Fleiss', app: sf.icc21, truth: 0.29, err: sf.icc21 - 0.29, tol: 0.005, unit: '' });
+  rows.push({ group: 'Reliability', name: 'ICC(3,1) v Shrout & Fleiss', app: sf.icc31, truth: 0.71, err: sf.icc31 - 0.71, tol: 0.005, unit: '' });
+  // large synthetic sample with known between-runner SD 5 and within-runner (session) SD 2
+  let s = 7; const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; }, nrm = () => Math.sqrt(-2 * Math.log(rnd())) * Math.cos(2 * Math.PI * rnd());
+  const A = [], B = []; for (let i = 0; i < 6000; i++) { const tr = 40 + 5 * nrm(); A.push(tr + 2 * nrm()); B.push(tr + 0.5 + 2 * nrm()); }
+  const ps = R.pairStats(A, B);
+  rows.push({ group: 'Reliability', name: 'SEM recovers true 2.0 (n=6000)', app: ps.sem, truth: 2, err: ps.sem - 2, tol: 0.06, unit: '' });
+  rows.push({ group: 'Reliability', name: 'MDC95 recovers true 5.54', app: ps.mdc, truth: 1.96 * Math.SQRT2 * 2, err: ps.mdc - 1.96 * Math.SQRT2 * 2, tol: 0.17, unit: '' });
+  rows.push({ group: 'Reliability', name: 'ICC(3,1) recovers true 0.862', app: ps.icc31, truth: 25 / 29, err: ps.icc31 - 25 / 29, tol: 0.01, unit: '' });
+  rows.push({ group: 'Reliability', name: 'Bias recovers true 0.5', app: ps.bias, truth: 0.5, err: ps.bias - 0.5, tol: 0.06, unit: '' });
+  // end to end: 20 runners, sessions built from this demo session with known perturbations, given out of order,
+  // plus one runner with a third session and one with only one session
+  const base = JSON.parse(JSON.stringify(G.sessionObject())), sess = [], known = { a: [], b: [] };
+  for (let r = 0; r < 20; r++) for (const k of [1, 0]) {
+    const o = JSON.parse(JSON.stringify(base)); o.client.cName = `Runner ${String(r + 1).padStart(2, '0')}`; o.client.cDate = k ? '2026-12-08' : '2026-12-01';
+    const off = (r - 10) * 0.7, noise = Math.sin(r * 3.1 + k * 1.7) * 1.2; o.views.left.sum.kneeIC.mean += off + noise; (k ? known.b : known.a).push(o.views.left.sum.kneeIC.mean);
+    sess.push(o);
+  }
+  const extra = JSON.parse(JSON.stringify(sess[0])); extra.client.cDate = '2026-12-20'; extra.views.left.sum.kneeIC.mean += 50; sess.push(extra);
+  const lone = JSON.parse(JSON.stringify(base)); lone.client.cName = 'Single Session'; sess.push(lone);
+  const res = G.loadRelSessions(sess), row = res.rows.find(x => x.id === 'kneeIC' && x.side === 'L'), direct = R.pairStats(known.a, known.b);
+  rows.push({ group: 'Reliability', name: 'Runners paired (of 20)', app: res.pairs, truth: 20, err: res.pairs - 20, tol: 0, unit: 'n' });
+  rows.push({ group: 'Reliability', name: 'Measures analysed', app: res.rows.length, truth: 33, err: res.rows.length - 33, tol: 0, unit: 'n' });
+  rows.push({ group: 'Reliability', name: 'Pairing and ordering (SEM match)', app: row.sem, truth: direct.sem, err: row.sem - direct.sem, tol: 1e-9, unit: '' });
+  rows.push({ group: 'Reliability', name: 'Bootstrap CI brackets ICC', app: +(row.iccLo <= row.icc21 && row.icc21 <= row.iccHi), truth: 1, err: +(row.iccLo <= row.icc21 && row.icc21 <= row.iccHi) - 1, tol: 0, unit: '' });
+  rows.push({ group: 'Reliability', name: 'Unchanged measures give SEM 0', app: res.rows.find(x => x.id === 'cadence' && x.side === 'L').sem, truth: 0, err: res.rows.find(x => x.id === 'cadence' && x.side === 'L').sem, tol: 1e-9, unit: '' });
   return { rows, secs };
 });
 await browser.close();
