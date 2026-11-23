@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Jump Lab">
+<title>Jump Lab · Marjon Biomechanics</title>
+<style>
+:root{--bg:#0e1116;--panel:#171b22;--line:#29303b;--text:#eef1f5;--muted:#93a0b2;--accent:#3ddc97;--blue:#5aa9ff;--warn:#ffb547;--red:#ff6b6b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{min-height:100svh;display:flex;justify-content:center}
+.wrap{width:100%;max-width:520px;padding:calc(18px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom))}
+.brand{font-size:13px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+h1{font-size:34px;margin:0 0 6px;line-height:1.1}
+h2{font-size:24px;margin:0 0 12px}
+p{line-height:1.5;color:#cfd6df;margin:0 0 14px;font-size:16.5px}
+.screen{display:none;animation:fade .25s ease}
+.screen.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px 18px;margin-bottom:14px}
+.btn{display:block;width:100%;border:0;border-radius:14px;padding:17px 18px;font-size:18px;font-weight:650;background:var(--accent);color:#05281a;cursor:pointer;margin-top:10px}
+.btn.alt{background:transparent;color:var(--text);border:1px solid var(--line)}
+.btn:disabled{opacity:.5}
+label.f{display:block;font-size:15px;color:var(--muted);margin-bottom:8px}
+.inrow{display:flex;gap:10px;align-items:center}
+.inrow input{flex:1;font-size:20px;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:#0a0d11;color:var(--text)}
+.inrow span{color:var(--muted);font-size:17px}
+ol.steps{list-style:none;padding:0;margin:0;counter-reset:s}
+ol.steps li{position:relative;padding:4px 0 14px 46px;line-height:1.45;font-size:16.5px;counter-increment:s}
+ol.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:32px;height:32px;border-radius:50%;background:var(--accent);color:#05281a;font-weight:700;display:flex;align-items:center;justify-content:center}
+ol.steps b{color:#fff}
+.note{font-size:14px;color:var(--muted);line-height:1.45}
+.warn{color:var(--warn)}
+.live{text-align:center;padding-top:30px}
+.big{font-size:64px;font-weight:800;line-height:1.05;margin:18px 0 10px}
+.sub{font-size:19px;color:#cfd6df;min-height:52px}
+#trace{width:100%;height:120px;display:block;margin-top:24px}
+.metric{display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line)}
+.metric:last-child{border-bottom:0}
+.metric .k{color:var(--muted);font-size:15px}
+.metric .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.hero{text-align:center;padding:22px 18px}
+.hero .k{color:var(--muted);text-transform:uppercase;letter-spacing:.8px;font-size:13px}
+.hero .v{font-size:78px;font-weight:800;color:var(--accent);line-height:1;margin-top:6px;font-variant-numeric:tabular-nums}
+.hero .v small{font-size:28px;color:var(--muted);font-weight:600;margin-left:4px}
+.hero .best{margin-top:8px;color:var(--muted);font-size:15px}
+#chart{width:100%;height:230px;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+details{margin-top:4px}
+summary{cursor:pointer;color:var(--blue);font-size:15.5px;padding:6px 0}
+details p{font-size:15px}
+.figure{display:flex;justify-content:center;margin:4px 0 12px}
+a{color:var(--blue)}
+.foot{margin-top:18px;text-align:center}
+.hist{font-size:15px}
+.hist div{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)}
+.hist div:last-child{border-bottom:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- 0. welcome -->
+<section class="screen on" id="s-welcome">
+  <div class="brand">Marjon Biomechanics</div>
+  <h1>Jump Lab</h1>
+  <p>Measure your jump with just your phone. Its motion sensor feels how hard the ground pushes you, a bit like the force plates in our biomechanics lab.</p>
+  <div class="card">
+    <label class="f" for="mass">Your body mass (optional, for force in newtons)</label>
+    <div class="inrow"><input id="mass" type="number" inputmode="decimal" min="20" max="200" placeholder="e.g. 70"><span>kg</span></div>
+  </div>
+  <button class="btn" id="goHow">Let's go</button>
+  <p class="note" style="margin-top:14px">Everything stays on your phone. Nothing is uploaded or saved anywhere else.</p>
+</section>
+
+<!-- 1. how to -->
+<section class="screen" id="s-how">
+  <div class="brand">Before you jump</div>
+  <h2>How it works</h2>
+  <div class="figure">
+    <svg width="150" height="170" viewBox="0 0 150 170" aria-hidden="true">
+      <circle cx="75" cy="24" r="14" fill="none" stroke="#eef1f5" stroke-width="4"/>
+      <line x1="75" y1="38" x2="75" y2="96" stroke="#eef1f5" stroke-width="4" stroke-linecap="round"/>
+      <rect x="62" y="52" width="26" height="40" rx="5" fill="#3ddc97"/>
+      <path d="M75 48 L52 70 L64 72" fill="none" stroke="#eef1f5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M75 48 L98 70 L86 72" fill="none" stroke="#eef1f5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M75 96 L62 128 L64 160" fill="none" stroke="#eef1f5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M75 96 L88 128 L86 160" fill="none" stroke="#eef1f5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <line x1="20" y1="163" x2="130" y2="163" stroke="#29303b" stroke-width="3"/>
+    </svg>
+  </div>
+  <ol class="steps">
+    <li><b>Hold your phone flat against your chest</b> with both hands. Keep it pressed there the whole time.</li>
+    <li><b>Stand still</b> when you're told to. The phone uses this moment to weigh you.</li>
+    <li>When you hear <b>"Jump!"</b>, dip down and jump straight up as high as you can.</li>
+    <li><b>Land on both feet</b> and stay still until it says "Done". Then look at your results.</li>
+  </ol>
+  <div class="card note"><span class="warn">Safety:</span> find a clear space on a flat, non-slip floor, with nothing above your head. Turn your volume up so you can hear the countdown.</div>
+  <button class="btn" id="goJump">I'm ready</button>
+  <button class="btn alt" id="backWelcome">Back</button>
+</section>
+
+<!-- 2. live -->
+<section class="screen" id="s-live">
+  <div class="live">
+    <div class="brand">Jump Lab</div>
+    <div class="big" id="liveBig">Get ready</div>
+    <div class="sub" id="liveSub">Hold your phone flat against your chest</div>
+    <canvas id="trace"></canvas>
+    <button class="btn alt" id="cancel" style="margin-top:28px">Cancel</button>
+  </div>
+</section>
+
+<!-- 3. results -->
+<section class="screen" id="s-results">
+  <div class="brand">Your jump</div>
+  <div class="card hero">
+    <div class="k">Jump height</div>
+    <div class="v" id="rHeight">–</div>
+    <div class="best" id="rBest"></div>
+  </div>
+  <div class="card">
+    <div class="metric"><span class="k">Time in the air</span><span class="v" id="rFlight">–</span></div>
+    <div class="metric"><span class="k">Peak push force</span><span class="v" id="rPeak">–</span></div>
+    <div class="metric"><span class="k">Time to take off</span><span class="v" id="rTtt">–</span></div>
+  </div>
+  <div class="card">
+    <h2 style="font-size:18px;margin-bottom:6px">Your force–time curve</h2>
+    <canvas id="chart"></canvas>
+    <div class="legend">
+      <span><i style="background:#ffb54766"></i>Dip</span>
+      <span><i style="background:#5aa9ff66"></i>Push</span>
+      <span><i style="background:#3ddc9755"></i>In the air</span>
+      <span><i style="background:#ff6b6b55"></i>Landing</span>
+    </div>
+    <details>
+      <summary>What am I looking at?</summary>
+      <p>The line shows how hard the ground pushed on you, in body weights. Standing still is 1. As you dip, you briefly "unweight" and it drops below 1. Then you push hard into the floor, often to 2–3 times your body weight. In the air it falls to zero, and landing gives a big spike.</p>
+      <p>Jump height comes from how long you were in the air. The longer you're up, the higher you went: height = g × time² ÷ 8.</p>
+      <p>Your phone gives an estimate. In our lab we measure this properly with force plates and motion capture, and that's what our students learn to do.</p>
+    </details>
+  </div>
+  <div class="card hist" id="histCard" style="display:none"><h2 style="font-size:18px;margin-bottom:6px">This session</h2><div id="hist"></div></div>
+  <button class="btn" id="again">Jump again</button>
+  <button class="btn alt" id="share">Share my result</button>
+  <div class="foot note">Want to study this properly? <a id="courseLink" href="https://www.marjon.ac.uk" target="_blank" rel="noopener">Biomechanics at Marjon</a></div>
+</section>
+
+<!-- error -->
+<section class="screen" id="s-error">
+  <div class="brand">Jump Lab</div>
+  <h2 id="errTitle">Something went wrong</h2>
+  <p id="errText"></p>
+  <button class="btn" id="errRetry">Try again</button>
+  <button class="btn alt" id="errDemo">See a demo jump</button>
+</section>
+
+</div>
+<script>
+const COURSE_URL = 'https://www.marjon.ac.uk'; // change to the biomechanics / SES course page
+document.getElementById('courseLink').href = COURSE_URL;
+
+const $=id=>document.getElementById(id);
+const show=id=>{ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id)); window.scrollTo(0,0); };
+let audio=null, run=0, samples=[], listening=false, lastResult=null, demo=false;
+const jumps=[];
+
+// ---------- sound and speech ----------
+function beep(freq=880,ms=140){ try{ if(!audio) return; const o=audio.createOscillator(), g=audio.createGain(); o.frequency.value=freq; o.connect(g); g.connect(audio.destination); g.gain.setValueAtTime(0.25,audio.currentTime); g.gain.exponentialRampToValueAtTime(0.001,audio.currentTime+ms/1000); o.start(); o.stop(audio.currentTime+ms/1000); }catch(e){} }
+function say(t){ try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(t); u.lang='en-GB'; u.rate=1.05; speechSynthesis.speak(u); }catch(e){} }
+function buzz(p){ try{ navigator.vibrate&&navigator.vibrate(p); }catch(e){} }
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+function live(big,sub){ $('liveBig').textContent=big; if(sub!==undefined) $('liveSub').textContent=sub; }
+
+// ---------- sensor ----------
+function onMotion(e){
+  const a=e.accelerationIncludingGravity; if(!a||a.x==null) return;
+  samples.push([e.timeStamp||performance.now(), Math.hypot(a.x,a.y,a.z)]);
+}
+async function startSensor(){
+  if(typeof DeviceMotionEvent==='undefined') throw new Error('nosensor');
+  if(typeof DeviceMotionEvent.requestPermission==='function'){
+    const r=await DeviceMotionEvent.requestPermission();
+    if(r!=='granted') throw new Error('denied');
+  }
+  samples=[]; window.addEventListener('devicemotion',onMotion); listening=true;
+  await wait(800);
+  if(samples.length<5){ stopSensor(); throw new Error('nosensor'); }
+}
+function stopSensor(){ window.removeEventListener('devicemotion',onMotion); listening=false; }
+
+// demo: a realistic countermovement jump fed in at ~60 Hz, for laptops or for showing people
+function demoSignal(t){ // t in s from the "Jump" cue, returns body weights
+  const T0=0.6, s=t-T0;
+  if(s<0) return 1;
+  const k=(a,b,x)=>Math.max(0,Math.min(1,(x-a)/(b-a)));
+  if(s<0.32) return 1-0.62*Math.sin(Math.PI*k(0,0.32,s));                 // dip / unweighting
+  if(s<0.52) return 1+1.35*Math.sin(Math.PI/2*k(0.32,0.52,s));            // braking
+  if(s<0.74) return 2.35-0.15*Math.sin(Math.PI*k(0.52,0.74,s));           // propulsion plateau
+  if(s<0.84) return 2.35*(1-k(0.74,0.84,s));                              // drive to take-off
+  if(s<1.36) return 0;                                                      // flight 0.52 s
+  if(s<1.42) return 4.2*k(1.36,1.42,s);                                     // landing
+  if(s<1.9) return 1+3.2*Math.exp(-(s-1.42)*10)*Math.cos((s-1.42)*14);
+  return 1;
+}
+let demoTimer=null, demoStart=null;
+function startDemo(){
+  samples=[]; listening=true; const t0=performance.now();
+  demoTimer=setInterval(()=>{ const now=performance.now();
+    const bw = demoStart==null ? 1 : demoSignal((now-demoStart)/1000);
+    samples.push([now, 9.81*(bw+(Math.random()-0.5)*0.05)]); },16.7);
+}
+function stopDemo(){ clearInterval(demoTimer); demoTimer=null; demoStart=null; listening=false; }
+
+// ---------- live trace ----------
+let traceRAF=null;
+function drawTrace(g0){
+  const c=$('trace'), dpr=devicePixelRatio||1, w=c.clientWidth, h=c.clientHeight;
+  if(c.width!==w*dpr){ c.width=w*dpr; c.height=h*dpr; }
+  const x=c.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0); x.clearRect(0,0,w,h);
+  const now=samples.length?samples[samples.length-1][0]:0, span=4000;
+  const Y=v=>h-8-(h-16)*Math.min(v,3.2)/3.2;
+  x.strokeStyle='#ffffff22'; x.beginPath(); x.moveTo(0,Y(1)); x.lineTo(w,Y(1)); x.stroke();
+  x.strokeStyle='#3ddc97'; x.lineWidth=2.5; x.beginPath(); let first=true;
+  for(const [t,a] of samples){ if(t<now-span) continue; const px=w*(1-(now-t)/span), py=Y(a/(g0||9.81)); first?x.moveTo(px,py):x.lineTo(px,py); first=false; }
+  x.stroke();
+  traceRAF=requestAnimationFrame(()=>drawTrace(g0));
+}
+
+// ---------- the guided jump ----------
+async function doJump(useDemo){
+  const my=++run; demo=useDemo;
+  try{ audio=audio||new (window.AudioContext||window.webkitAudioContext)(); audio.resume&&audio.resume(); }catch(e){}
+  try{ speechSynthesis.speak(new SpeechSynthesisUtterance('')); }catch(e){} // unlock speech on iOS during the tap
+  show('s-live'); live('Get ready','Hold your phone flat against your chest');
+  try{ if(useDemo) startDemo(); else await startSensor(); }
+  catch(e){ return fail(e.message); }
+  cancelAnimationFrame(traceRAF); drawTrace(9.81);
+  say('Hold your phone flat against your chest.');
+  await wait(2600); if(my!==run) return;
+
+  // weigh: 2 s of quiet standing, repeated if they're moving
+  let g0=0, okStill=false;
+  for(let attempt=0; attempt<4 && !okStill; attempt++){
+    live('Stand still','Weighing you…'); say('Stand still.'); beep(660,120);
+    await wait(500); const from=samples.length; await wait(2000); if(my!==run) return;
+    const seg=samples.slice(from).map(s=>s[1]);
+    if(seg.length<10){ return fail('nosensor'); }
+    const m=seg.reduce((a,b)=>a+b,0)/seg.length, sd=Math.sqrt(seg.reduce((a,b)=>a+(b-m)**2,0)/seg.length);
+    if(sd/m<0.04 && m>7 && m<12.5){ g0=m; okStill=true; }
+    else { live('Too wobbly','Keep really still for a moment'); say('Too wobbly. Keep really still.'); await wait(1600); if(my!==run) return; }
+  }
+  if(!okStill) return fail('wobbly');
+  cancelAnimationFrame(traceRAF); drawTrace(g0);
+
+  // countdown
+  for(const n of ['3','2','1']){ live(n,'Get ready to jump'); say(n); beep(880,120); buzz(60); await wait(850); if(my!==run) return; }
+  const cueAt=performance.now(); live('JUMP!','As high as you can'); say('Jump!'); beep(1320,300); buzz(200);
+  if(useDemo) demoStart=performance.now();
+
+  // record until a landing is found, or 5 s
+  let res=null;
+  while(performance.now()-cueAt<5000){
+    await wait(250); if(my!==run) return;
+    res=analyse(samples.filter(s=>s[0]>=cueAt-1500), g0);
+    if(res && res.landingT!=null && samples[samples.length-1][0]-res.landingAbs>900) break;
+  }
+  useDemo?stopDemo():stopSensor(); cancelAnimationFrame(traceRAF);
+  res=analyse(samples.filter(s=>s[0]>=cueAt-1500), g0);
+  if(!res || res.error){ return fail(res&&res.error||'nojump'); }
+  say('Done. Jump height '+(res.height*100).toFixed(0)+' centimetres.'); beep(990,160);
+  live('Done!',''); await wait(500);
+  showResults(res);
+}
+
+// ---------- analysis ----------
+function butter(x,fc,fs){ // 2nd-order Butterworth, forwards and backwards
+  const w=Math.tan(Math.PI*fc/fs), k=Math.SQRT2, d=1+k*w+w*w, b0=w*w/d, b1=2*b0, a1=2*(w*w-1)/d, a2=(1-k*w+w*w)/d;
+  const p=s=>{ const y=[]; let x1=s[0],x2=s[0],y1=s[0],y2=s[0]; for(const v of s){ const o=b0*v+b1*x1+b0*x2-a1*y1-a2*y2; x2=x1;x1=v;y2=y1;y1=o;y.push(o);} return y; };
+  return p(p(x).reverse()).reverse();
+}
+function analyse(raw,g0){
+  if(raw.length<30) return null;
+  // resample to 100 Hz (phones deliver uneven timing)
+  const fs=100, t0=raw[0][0], t1=raw[raw.length-1][0], n=Math.floor((t1-t0)/10)+1, bw=new Array(n);
+  let j=0; for(let i=0;i<n;i++){ const t=t0+i*10; while(j<raw.length-2&&raw[j+1][0]<t) j++;
+    const [ta,a]=raw[j],[tb,b]=raw[j+1]; bw[i]=(a+(b-a)*Math.max(0,Math.min(1,(t-ta)/((tb-ta)||1))))/g0; }
+  // flight: longest stretch near zero g
+  const thr=0.3; let best=null, st=-1;
+  for(let i=0;i<=n;i++){ const air=i<n&&bw[i]<thr;
+    if(air&&st<0) st=i; if(!air&&st>=0){ if(!best||i-st>best[1]-best[0]) best=[st,i]; st=-1; } }
+  if(!best || (best[1]-best[0])<12) return {error:'nojump'};
+  if(best[1]>=n) return {landingT:null};                    // still in the air
+  // refine the edges with a lower threshold, interpolating between samples
+  const e=0.15; let i0=best[0], i1=best[1];
+  while(i0>1 && bw[i0-1]<thr) i0--; while(i0<i1 && bw[i0]>e) i0++;
+  while(i1>i0 && bw[i1-1]>e) i1--;
+  const cross=i=>{ const a=bw[i-1],b=bw[i]; return i-1+(e-a)/((b-a)||1); };
+  const to=cross(i0), ld=cross(i1);
+  const flight=(ld-to)/fs; if(flight>1.0) return {error:'odd'};
+  const height=9.81*flight*flight/8;
+  const f=butter(bw,15,fs);
+  const toI=best[0];
+  // peak push, then the unweighting trough before it, then movement onset
+  const w0=Math.max(1,toI-150);
+  let pkI=toI-1, pk=0; for(let i=w0;i<toI;i++) if(f[i]>pk){pk=f[i];pkI=i;}
+  let tr=pkI, mn=1e9; for(let i=w0;i<pkI;i++) if(f[i]<mn){mn=f[i];tr=i;}
+  let on=tr; while(on>0 && f[on]<0.95) on--;
+  let up=tr; while(up<toI && f[up]<1) up++;               // where the dip ends and the push begins
+  return {bw:f, fs, to, ld, toI, landI:best[1], tr, on, up, flight, height, peak:pk, ttt:(to-on)/fs,
+    landingT:ld/fs, landingAbs:t0+ld*10};
+}
+
+// ---------- results ----------
+function showResults(r){
+  lastResult=r;
+  const mass=parseFloat($('mass').value);
+  jumps.push(r.height);
+  const best=Math.max(...jumps);
+  $('rHeight').innerHTML=`${(r.height*100).toFixed(1)}<small>cm</small>`;
+  $('rBest').textContent= jumps.length>1 ? (r.height===best?'New best this session!':`Best this session: ${(best*100).toFixed(1)} cm`) : '';
+  $('rFlight').textContent=r.flight.toFixed(3)+' s';
+  $('rPeak').textContent= (r.peak).toFixed(2)+' × body weight'+(mass>0?` (${Math.round(r.peak*mass*9.81)} N)`:'');
+  $('rTtt').textContent=r.ttt.toFixed(2)+' s';
+  $('histCard').style.display=jumps.length>1?'block':'none';
+  $('hist').innerHTML=jumps.map((h,i)=>`<div><span>Jump ${i+1}</span><b>${(h*100).toFixed(1)} cm</b></div>`).join('');
+  show('s-results');
+  requestAnimationFrame(()=>drawChart($('chart'),r,false));
+}
+function drawChart(c,r,forCard){
+  const dpr=forCard?1:(devicePixelRatio||1), w=forCard?c.width:c.clientWidth, h=forCard?c.height:c.clientHeight;
+  if(!forCard){ c.width=w*dpr; c.height=h*dpr; }
+  const x=c.getContext('2d'); x.setTransform(dpr,0,0,dpr,0,0);
+  const fsz=forCard?26:12, padL=forCard?70:34, padB=forCard?50:22, padT=10;
+  const a=Math.max(0,r.on-40), b=Math.min(r.bw.length-1,r.landI+45), yMax=Math.max(3,Math.ceil(r.peak*1.25*2)/2);
+  const X=i=>padL+(w-padL-10)*(i-a)/(b-a), Y=v=>h-padB-(h-padB-padT)*Math.min(v,yMax)/yMax;
+  if(forCard){ x.fillStyle='#171b22'; x.fillRect(0,0,w,h); }
+  const band=(i0,i1,col)=>{ x.fillStyle=col; x.fillRect(X(i0),padT,X(i1)-X(i0),h-padB-padT); };
+  band(r.on,r.up,'#ffb54722'); band(r.up,r.to,'#5aa9ff22'); band(r.to,r.ld,'#3ddc9722'); band(r.ld,Math.min(b,r.landI+30),'#ff6b6b22');
+  x.font=`${fsz}px system-ui`; x.fillStyle='#93a0b2'; x.textAlign='right';
+  for(let v=0;v<=yMax;v+=1){ x.fillText(v+'',padL-8,Y(v)+fsz/3); x.strokeStyle=v===1?'#ffffff55':'#ffffff14'; x.lineWidth=1; x.setLineDash(v===1?[5,5]:[]); x.beginPath(); x.moveTo(padL,Y(v)); x.lineTo(w-10,Y(v)); x.stroke(); }
+  x.setLineDash([]);
+  x.save(); x.translate(forCard?24:10,(h-padB)/2); x.rotate(-Math.PI/2); x.textAlign='center'; x.fillText('body weights',0,0); x.restore();
+  x.textAlign='center'; x.fillText('time',(padL+w)/2,h-(forCard?12:4));
+  x.strokeStyle='#eef1f5'; x.lineWidth=forCard?5:2.5; x.lineJoin='round'; x.beginPath();
+  for(let i=a;i<=b;i++) i===a?x.moveTo(X(i),Y(r.bw[i])):x.lineTo(X(i),Y(r.bw[i])); x.stroke();
+}
+
+// ---------- share ----------
+async function shareResult(){
+  const r=lastResult; if(!r) return;
+  const c=document.createElement('canvas'); c.width=1080; c.height=1350; const x=c.getContext('2d');
+  x.fillStyle='#0e1116'; x.fillRect(0,0,1080,1350);
+  x.fillStyle='#93a0b2'; x.font='600 34px system-ui'; x.textAlign='center'; x.fillText('MARJON BIOMECHANICS · JUMP LAB',540,110);
+  x.fillStyle='#eef1f5'; x.font='600 44px system-ui'; x.fillText('I jumped',540,230);
+  x.fillStyle='#3ddc97'; x.font='800 230px system-ui'; x.fillText((r.height*100).toFixed(1),540,450);
+  x.fillStyle='#93a0b2'; x.font='600 60px system-ui'; x.fillText('centimetres',540,530);
+  x.fillStyle='#cfd6df'; x.font='36px system-ui'; x.fillText(`${r.flight.toFixed(3)} s in the air · peak push ${r.peak.toFixed(1)} × body weight`,540,610);
+  const cc=document.createElement('canvas'); cc.width=960; cc.height=560; drawChart(cc,r,true);
+  x.drawImage(cc,60,680);
+  x.fillStyle='#93a0b2'; x.font='30px system-ui'; x.fillText('Measured with my phone. Estimate only.',540,1300);
+  const blob=await new Promise(ok=>c.toBlob(ok,'image/png'));
+  const file=new File([blob],'my-jump.png',{type:'image/png'});
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:'My jump',text:`I jumped ${(r.height*100).toFixed(1)} cm in Marjon Jump Lab`}); return; }
+  }catch(e){ if(e.name==='AbortError') return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='my-jump.png'; a.click();
+}
+
+// ---------- errors ----------
+function fail(code){
+  run++; stopSensor(); stopDemo(); cancelAnimationFrame(traceRAF);
+  const M={
+    nosensor:['No motion sensor found','This needs a phone. If you\'re on a laptop, open this page on your phone instead, or watch a demo jump.'],
+    denied:['Motion access was blocked','Tap "Try again" and choose "Allow" when your phone asks about motion and orientation.'],
+    wobbly:['Couldn\'t weigh you','Hold the phone flat and still against your chest while it says "Stand still", then try again.'],
+    nojump:['No jump found','Keep the phone pressed to your chest and jump as soon as you hear "Jump!".'],
+    odd:['That didn\'t look like a jump','Keep the phone pressed to your chest the whole time, and don\'t throw it!']
+  };
+  const [t,m]=M[code]||['Something went wrong',String(code)];
+  $('errTitle').textContent=t; $('errText').textContent=m; say(t);
+  $('errDemo').style.display=code==='nosensor'?'block':'none';
+  show('s-error');
+}
+
+// ---------- wiring ----------
+$('goHow').onclick=()=>show('s-how');
+$('backWelcome').onclick=()=>show('s-welcome');
+$('goJump').onclick=()=>doJump(false);
+$('again').onclick=()=>doJump(demo);
+$('errRetry').onclick=()=>doJump(false);
+$('errDemo').onclick=()=>doJump(true);
+$('cancel').onclick=()=>{ run++; stopSensor(); stopDemo(); cancelAnimationFrame(traceRAF); try{speechSynthesis.cancel();}catch(e){} show('s-how'); };
+$('share').onclick=shareResult;
+if(new URLSearchParams(location.search).get('demo')==='1') { $('goJump').onclick=()=>doJump(true); }
+</script>
+</body>
+</html>
