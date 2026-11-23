@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Biomechanics Lab · Markerless Analysis</title>
+<style>
+:root{--bg:#0e1116;--panel:#171b22;--line:#262c36;--text:#e8ecf1;--muted:#8b95a5;--accent:#3ddc97;--accent2:#5aa9ff;--warn:#ffb547;--far:#6f7c8f}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;gap:24px;padding:14px 24px;border-bottom:1px solid var(--line)}
+header h1{font-size:22px;margin:0;font-weight:650;letter-spacing:.2px}
+header h1 span{color:var(--muted);font-weight:400}
+.tabs{display:flex;gap:6px;margin-left:auto}
+.tab{background:transparent;border:1px solid var(--line);color:var(--muted);padding:9px 22px;border-radius:999px;font-size:16px;cursor:pointer}
+.tab.on{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:600}
+.iconbtn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:9px 12px;border-radius:10px;cursor:pointer;font-size:15px}
+main{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(360px,1fr);gap:18px;padding:18px 24px;height:calc(100% - 64px)}
+.stage{position:relative;background:#000;border-radius:16px;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:0}
+.stage canvas{max-width:100%;max-height:100%;display:block}
+.drop{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:30px;background:rgba(14,17,22,.92)}
+.drop.hide{display:none}
+.drop.over{outline:3px dashed var(--accent);outline-offset:-14px}
+.drop h2{margin:0;font-size:30px;font-weight:600}
+.drop p{margin:0;color:var(--muted);font-size:17px;max-width:560px;line-height:1.45}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.btn{background:var(--accent);color:#06281a;border:0;padding:12px 20px;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer}
+.btn.alt{background:transparent;color:var(--text);border:1px solid var(--line)}
+.btn.small{padding:8px 14px;font-size:14px}
+.progress{position:absolute;left:0;right:0;bottom:0;padding:14px 18px;background:linear-gradient(transparent,rgba(0,0,0,.8));display:none}
+.progress.on{display:block}
+.bar{height:8px;background:#ffffff22;border-radius:9px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
+.progress div.t{font-size:15px;margin-bottom:8px;color:#cfd6df}
+.stagebar{position:absolute;top:12px;left:12px;right:12px;display:flex;gap:8px;align-items:center;pointer-events:none}
+.pill{background:rgba(0,0,0,.6);border:1px solid #ffffff22;padding:6px 12px;border-radius:999px;font-size:14px;color:#dfe5ec;pointer-events:auto}
+.pill.btnp{cursor:pointer}
+.pill.btnp.on{background:var(--text);color:var(--bg)}
+.spacer{flex:1}
+aside{display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.card.big{grid-column:1/-1}
+.card .k{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.card .v{font-size:44px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.card.big .v{font-size:76px;color:var(--accent);line-height:1.05}
+.card .v small{font-size:.45em;color:var(--muted);font-weight:500;margin-left:4px}
+.card .h{font-size:13.5px;color:var(--muted);margin-top:6px;line-height:1.4}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 18px}
+.panel h3{margin:0 0 10px;font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+#chart{width:100%;height:150px;display:block}
+.lb{list-style:none;margin:0;padding:0;counter-reset:r}
+.lb li{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:18px;counter-increment:r}
+.lb li::before{content:counter(r);color:var(--muted);width:28px}
+.lb li span.n{flex:1}
+.lb li b{font-variant-numeric:tabular-nums}
+.lb li.me{color:var(--accent)}
+.addrow{display:flex;gap:8px;margin-top:10px}
+.addrow input{flex:1;background:#0b0e12;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px 12px;font-size:16px}
+.note{font-size:13px;color:var(--muted);line-height:1.45}
+.status{font-size:14px;color:var(--muted)}
+.status b{color:var(--accent)}
+.err{color:var(--warn);font-size:17px}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:16px;padding:22px 24px;width:min(520px,92vw)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog label{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:12px 0;font-size:15px}
+dialog select,dialog input{background:#0b0e12;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 10px;font-size:15px;width:170px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>Biomechanics Lab <span>· markerless movement analysis</span></h1>
+  <div class="tabs">
+    <button class="tab on" data-mode="jump">Jump</button>
+    <button class="tab" data-mode="gait">Gait</button>
+  </div>
+  <button class="iconbtn" id="settingsBtn" title="Settings">Settings</button>
+  <button class="iconbtn" id="fsBtn" title="Full screen">Full screen</button>
+</header>
+
+<main>
+  <section class="stage" id="stage">
+    <canvas id="view"></canvas>
+    <div class="stagebar">
+      <span class="pill" id="statusPill">Ready</span>
+      <span class="spacer"></span>
+      <span class="pill btnp" data-speed="0.25">¼×</span>
+      <span class="pill btnp on" data-speed="0.5">½×</span>
+      <span class="pill btnp" data-speed="1">1×</span>
+      <span class="pill btnp" id="newBtn">New clip</span>
+    </div>
+    <div class="drop" id="drop">
+      <h2 id="dropTitle">Drop a jump clip here</h2>
+      <p id="dropText">Film side-on with the whole body in view. Drag the saved video in, or watch the camera's save folder so each new clip is analysed automatically.</p>
+      <div class="btnrow">
+        <button class="btn" id="pickBtn">Choose clip</button>
+        <button class="btn alt" id="watchBtn">Watch a folder</button>
+      </div>
+      <div class="status" id="watchStatus"></div>
+      <input type="file" id="fileIn" accept=".avi,.mp4,.mov,.webm,video/*" class="hidden">
+    </div>
+    <div class="progress" id="progress"><div class="t" id="progText">Finding the body…</div><div class="bar"><i id="progBar"></i></div></div>
+  </section>
+
+  <aside id="side"></aside>
+</main>
+
+<dialog id="settings">
+  <h3 style="margin-top:0">Settings</h3>
+  <label>Pose model <select id="sModel"><option value="0">Lite (fastest)</option><option value="1" selected>Full</option><option value="2">Heavy (most accurate)</option></select></label>
+  <label>Brightness <select id="sBright"><option value="auto" selected>Auto</option><option value="1">Off</option><option value="2">×2</option><option value="3">×3</option><option value="4">×4</option></select></label>
+  <label>Frame rate (non-AVI files) <input id="sFps" type="number" value="100" min="1" max="2000"></label>
+  <label>Gait seconds to analyse <input id="sGaitSec" type="number" value="5" min="2" max="20" step="0.5"></label>
+  <label>Leaderboard <button class="btn alt small" id="clearLb" type="button">Clear jump leaderboard</button></label>
+  <p class="note">Everything runs on this computer. Clips are never uploaded and nothing is saved except leaderboard names and heights, which stay in this browser. Joint angles come from 2D pose estimation and are estimates (typically within 5–10°).</p>
+  <div style="text-align:right;margin-top:14px"><button class="btn small" id="closeSettings">Done</button></div>
+</dialog>
+
+<script>
+// Shared analysis for the open day tool. lm[i] = array of 33 [x,y,vis] (normalised) or null.
+const L = {sh:[11,12], hip:[23,24], knee:[25,26], ank:[27,28], heel:[29,30], toe:[31,32], nose:0};
+
+function interpGaps(arr){ // arr of numbers or NaN
+  const n=arr.length, out=arr.slice(); let last=-1;
+  for(let i=0;i<n;i++){
+    if(!isNaN(out[i])){
+      if(last>=0 && i-last>1) for(let k=last+1;k<i;k++) out[k]=out[last]+(out[i]-out[last])*(k-last)/(i-last);
+      else if(last<0) for(let k=0;k<i;k++) out[k]=out[i];
+      last=i;
+    }
+  }
+  if(last>=0) for(let k=last+1;k<n;k++) out[k]=out[last];
+  return out;
+}
+
+function butterLow(x, fc, fs){ // 2nd-order Butterworth, run forwards and backwards (zero lag)
+  const w=Math.tan(Math.PI*fc/fs), k=Math.SQRT2, d=1+k*w+w*w;
+  const b0=w*w/d, b1=2*b0, b2=b0, a1=2*(w*w-1)/d, a2=(1-k*w+w*w)/d;
+  const pass=s=>{ const y=new Array(s.length); let x1=s[0],x2=s[0],y1=s[0],y2=s[0];
+    for(let i=0;i<s.length;i++){ const v=b0*s[i]+b1*x1+b2*x2-a1*y1-a2*y2; x2=x1;x1=s[i];y2=y1;y1=v;y[i]=v; } return y; };
+  return pass(pass(x).reverse()).reverse();
+}
+
+function series(lm, idx, comp, W, H){ // pixel series with gaps filled
+  const s=lm.map(f=>{ if(!f) return NaN; const p=f[idx]; return comp===0?p[0]*W:p[1]*H; });
+  return interpGaps(s);
+}
+
+function nearSide(lm){ // side (0 = left, 1 = right) facing the camera = higher mean visibility
+  let v=[0,0];
+  lm.forEach(f=>{ if(f) for(const s of [0,1]) v[s]+=f[L.hip[s]][2]+f[L.knee[s]][2]+f[L.ank[s]][2]; });
+  return v[1]>v[0]?1:0;
+}
+
+function angle(ax,ay,bx,by,cx,cy){ // angle at b, degrees
+  const v1x=ax-bx,v1y=ay-by,v2x=cx-bx,v2y=cy-by;
+  const c=(v1x*v2x+v1y*v2y)/(Math.hypot(v1x,v1y)*Math.hypot(v2x,v2y));
+  return Math.acos(Math.max(-1,Math.min(1,c)))*180/Math.PI;
+}
+
+function jointSeries(lm, side, W, H, fs, fc){
+  const g=(j,c)=>butterLow(series(lm,j[side],c,W,H),fc,fs);
+  const P={}; for(const k of ['sh','hip','knee','ank','heel','toe']) P[k]={x:g(L[k],0),y:g(L[k],1)};
+  const n=lm.length, knee=[], hip=[];
+  for(let i=0;i<n;i++){
+    knee.push(180-angle(P.hip.x[i],P.hip.y[i],P.knee.x[i],P.knee.y[i],P.ank.x[i],P.ank.y[i]));
+    hip.push(180-angle(P.sh.x[i],P.sh.y[i],P.hip.x[i],P.hip.y[i],P.knee.x[i],P.knee.y[i]));
+  }
+  return {P, knee, hip};
+}
+
+function validMask(lm){ // detected frames, ignoring the first few frames after the person is (re)found
+  const ok=lm.map(Boolean); let run=0;
+  for(let i=0;i<lm.length;i++){ if(!lm[i]){run=0;continue;} run++; if(run<=4) ok[i]=false; }
+  // short gaps (<= 5 frames) count as valid so a dropped frame mid-flight doesn't split the jump
+  let i=0; while(i<lm.length){ if(!lm[i]){ let j=i; while(j<lm.length&&!lm[j]) j++; if(i>0&&j<lm.length&&j-i<=5) for(let k=i;k<j;k++) ok[k]=true; i=j; } else i++; }
+  return ok;
+}
+
+function analyseJump(lm, fps, W, H){
+  const n=lm.length, valid=lm.filter(Boolean).length;
+  if(valid<n*0.3) return {error:'Could not find a person in enough of the clip.'};
+  const side=nearSide(lm);
+  const J=jointSeries(lm,side,W,H,fps,8);
+  const ok=validMask(lm);
+  // foot height: lowest point (heel or toe) of the camera-side foot, so a heel raise isn't counted as take-off
+  const hs=series(lm,L.heel[side],1,W,H), ts=series(lm,L.toe[side],1,W,H);
+  const footS=butterLow(hs.map((v,i)=>Math.max(v,ts[i])),20,fps);
+  const leg=[]; for(let i=0;i<n;i++) leg.push(Math.abs(J.P.ank.y[i]-J.P.hip.y[i]));
+  const legLen=[...leg].sort((a,b)=>a-b)[Math.floor(n*0.9)];
+  // apex: highest foot position among valid frames
+  let apex=-1, ay=1e9; for(let i=0;i<n;i++) if(ok[i]&&footS[i]<ay){ay=footS[i];apex=i;}
+  const med=a=>{const t=a.filter(isFinite).sort((x,y)=>x-y); return t.length?t[t.length>>1]:NaN;};
+  const win=(a,b)=>{const o=[]; for(let i=Math.max(0,a);i<Math.min(n,b);i++) if(ok[i]) o.push(footS[i]); return o;};
+  const pre=med(win(apex-Math.round(1.5*fps),apex-Math.round(0.3*fps)));
+  const post=med(win(apex+Math.round(0.3*fps),apex+Math.round(1.5*fps)));
+  const ground=isFinite(pre)?pre:post;
+  if(!isFinite(ground) || ground-ay<0.15*legLen) return {error:'No jump found in this clip.'};
+  const near=0.03*legLen;
+  let to=apex; while(to>0 && ok[to-1] && footS[to-1]<pre-near) to--;
+  let ld=apex; const pg=isFinite(post)?post:pre; while(ld<n-1 && ok[ld+1] && footS[ld+1]<pg-near) ld++;
+  if(to===0 || ld===n-1) return {error:'The jump runs off the start or end of the clip.'};
+  const flight=(ld+1-to)/fps;
+  const height=9.81*flight*flight/8;
+  // lowest point of the countermovement: lowest hip before take-off
+  let lo=to, hy=-1e9; const startSearch=Math.max(0,to-Math.round(1.5*fps));
+  for(let i=startSearch;i<to;i++) if(J.P.hip.y[i]>hy){hy=J.P.hip.y[i]; lo=i;}
+  // landing: lowest hip in the 0.8 s after landing
+  let lowLand=ld, hl=-1e9;
+  for(let i=ld;i<Math.min(n,ld+Math.round(0.8*fps));i++) if(J.P.hip.y[i]>hl){hl=J.P.hip.y[i]; lowLand=i;}
+  return {type:'jump', side, takeoff:to, landing:ld+1, lowest:lo, landLowest:lowLand, flight, height,
+    kneeLow:J.knee[lo], hipLow:J.hip[lo], kneeLand:J.knee[lowLand], knee:J.knee, hip:J.hip, P:J.P, foot:footS, ground};
+}
+
+function localExtrema(x, minGap, wantMax){
+  const out=[];
+  for(let i=1;i<x.length-1;i++){
+    const ok=wantMax? (x[i]>=x[i-1]&&x[i]>x[i+1]) : (x[i]<=x[i-1]&&x[i]<x[i+1]);
+    if(!ok) continue;
+    if(out.length && i-out[out.length-1]<minGap){
+      const j=out[out.length-1];
+      if(wantMax? x[i]>x[j] : x[i]<x[j]) out[out.length-1]=i;
+    } else out.push(i);
+  }
+  return out;
+}
+
+function analyseGait(lm, fps, W, H){
+  // Left/right leg labels from 2D pose estimation often swap in side view, so everything here avoids relying on them.
+  const n=lm.length, valid=lm.filter(Boolean).length;
+  if(valid<n*0.6) return {error:'Could not find a person in enough of the clip.'};
+  const med=a=>{const s=a.filter(isFinite).sort((x,y)=>x-y); if(!s.length) return NaN; const m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2;};
+  const g=(j,c)=>series(lm,j,c,W,H);
+  const pelX=butterLow(g(23,0).map((v,i,a)=>(v+g(24,0)[i])/2),6,fps);
+  const pelY=butterLow(g(23,1).map((v,i)=>(v+g(24,1)[i])/2),6,fps);
+  // 1) cadence from the rhythm of the pelvis bouncing up and down (one bounce per step)
+  const mY=pelY.reduce((a,b)=>a+b,0)/n, dY=pelY.map(v=>v-mY);
+  const ac=lag=>{let s=0; for(let i=0;i+lag<n;i++) s+=dY[i]*dY[i+lag]; return s/n;};
+  const lo=Math.round(0.22*fps), hi=Math.min(Math.round(0.9*fps), n-Math.round(0.6*fps));
+  if(hi<=lo+2) return {error:'Clip too short. Use at least 2 seconds of steady gait.'};
+  const acv=[]; for(let lag=lo-1;lag<=hi+1;lag++) acv[lag]=ac(lag);
+  const peaks=[]; for(let lag=lo;lag<=hi;lag++) if(acv[lag]>acv[lag-1]&&acv[lag]>=acv[lag+1]&&acv[lag]>0) peaks.push(lag);
+  if(!peaks.length) return {error:'Couldn\'t find a steady step rhythm. Try a longer clip.'};
+  const top=Math.max(...peaks.map(l=>acv[l]));
+  const best=peaks.find(l=>acv[l]>=0.35*top);
+  const A0=acv[best-1],B0=acv[best],C0=acv[best+1], den=A0-2*B0+C0;
+  const stepF=den? best+0.5*(A0-C0)/den : best;
+  const cadence=60*fps/stepF, stride=2*stepF;
+  // 2) per-frame angles for both legs (raw labels are consistent within a single frame)
+  const ang=(f,a,b,c)=>180-angle(f[a][0]*W,f[a][1]*H,f[b][0]*W,f[b][1]*H,f[c][0]*W,f[c][1]*H);
+  const kneeA=[], hipX=[], heelF=[], who=[], footA=[];
+  const dirSum=lm.reduce((s,f)=>f? s+(f[31][0]-f[29][0])+(f[32][0]-f[30][0]) : s,0), dir=dirSum>=0?1:-1;
+  for(let i=0;i<n;i++){
+    const f=lm[i]; if(!f){ kneeA.push([NaN,NaN]); heelF.push(NaN); who.push(0); footA.push(NaN); continue; }
+    kneeA.push([ang(f,23,25,27), ang(f,24,26,28)]);
+    const hl=dir*(f[29][0]*W-pelX[i]), hr=dir*(f[30][0]*W-pelX[i]);
+    const w=hr>hl?1:0; who.push(w); heelF.push(Math.max(hl,hr));
+    const he=f[29+w], to=f[31+w];
+    footA.push(Math.atan2((he[1]-to[1])*H, Math.abs(to[0]-he[0])*W)*180/Math.PI);
+  }
+  // 3) foot strikes: the leading heel reaches furthest ahead of the pelvis (Zeni et al., 2008), once per step
+  const front=butterLow(interpGaps(heelF),10,fps);
+  const fLo=Math.min(...front), fRange=Math.max(...front)-fLo;
+  const fs=localExtrema(front,Math.round(0.6*stepF),true).filter(i=>front[i]>fLo+0.5*fRange && i>2 && i<n-3 && lm[i]);
+  if(fs.length<3) return {error:'Not enough steps found. Try a longer clip.'};
+  // the heel reaches furthest forward just before contact, so step on to the frame the leading foot reaches the belt
+  const low=lm.map(f=>f? Math.max(f[29][1],f[30][1],f[31][1],f[32][1])*H : NaN);
+  const lowS=low.filter(isFinite).sort((a,b)=>a-b), belt=lowS[Math.floor(lowS.length*0.85)];
+  const legLen=med(lm.map(f=>f? Math.abs(f[27][1]-f[23][1])*H : NaN));
+  for(let k=0;k<fs.length;k++){
+    const i=fs[k], w=who[i];
+    for(let j=i;j<Math.min(n,i+Math.round(0.15*fps));j++){
+      const f=lm[j]; if(!f) continue;
+      if(Math.max(f[29+w][1],f[31+w][1])*H >= belt-0.04*legLen){ fs[k]=j; who[j]=w; break; }
+    }
+  }
+  const around=(arr,i,fn)=>med([arr[i-1],arr[i],arr[i+1]].map(fn));
+  const kneeFS=med(fs.map(i=>around(kneeA,i,k=>k[who[i]])));
+  // 4) peak knee bend: the most bent knee between consecutive foot strikes
+  const kMax=butterLow(interpGaps(kneeA.map(k=>Math.max(k[0],k[1]))),8,fps);
+  const kMin=butterLow(interpGaps(kneeA.map(k=>Math.min(k[0],k[1]))),8,fps);
+  const swingPk=[]; for(let k=1;k<fs.length;k++){ let m=-1e9; for(let i=fs[k-1];i<=fs[k];i++) m=Math.max(m,kMax[i]); swingPk.push(m); }
+  const fa=med(fs.map(i=>around(footA,i,v=>v)));
+  const pattern= fa>8?'Heel strike':(fa<-4?'Forefoot strike':'Midfoot strike');
+  return {type:'gait', dir, fs, who, cadence, stride:stride/fps, kneeFS, swingPeak:med(swingPk),
+    footAngle:fa, pattern, kMax, kMin, kneeA, side:null};
+}
+
+
+</script>
+<script>
+const POSE_BASE = new URLSearchParams(location.search).get('pose')==='local'
+  ? 'pose/package/' : 'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/';
+
+// ---------- state ----------
+let mode='jump';
+const S={ jump:{res:null,clip:null,lm:null,name:null}, gait:{res:null,clip:null,lm:null,name:null} };
+let speed=0.5, busy=false, poseObj=null, poseModel=null, lastResult=null;
+const view=document.getElementById('view'), vctx=view.getContext('2d');
+const $=id=>document.getElementById(id);
+
+// ---------- AVI (MJPEG) reader: browsers can't play these, so pull the JPEG frames out directly ----------
+function parseAvi(buf){
+  const dv=new DataView(buf), u8=new Uint8Array(buf), frames=[]; let us=0, rate=0, scale=0, w=0, h=0;
+  const id=o=>String.fromCharCode(u8[o],u8[o+1],u8[o+2],u8[o+3]);
+  if(id(0)!=='RIFF') throw new Error('Not an AVI file');
+  (function walk(start,end){
+    let o=start;
+    while(o+8<=end){
+      const cid=id(o), size=dv.getUint32(o+4,true);
+      if(cid==='RIFF'||cid==='LIST') walk(o+12, Math.min(o+8+size,end));
+      else if(cid==='avih'){ us=dv.getUint32(o+8,true); w=dv.getUint32(o+40,true); h=dv.getUint32(o+44,true); }
+      else if(cid==='strh' && id(o+8)==='vids'){ scale=dv.getUint32(o+28,true); rate=dv.getUint32(o+32,true); }
+      else if(/^\d\d(dc|db)$/.test(cid) && size>0) frames.push([o+8,size]);
+      if(size===0 && !(cid==='RIFF'||cid==='LIST') && !/^\d\d/.test(cid)) { o+=8; continue; }
+      o+=8+size+(size&1);
+    }
+  })(0,buf.byteLength);
+  if(!frames.length) throw new Error('No frames found in AVI');
+  if(u8[frames[0][0]]!==0xFF || u8[frames[0][0]+1]!==0xD8) throw new Error('This AVI is not MJPEG, so it can\'t be read here. Export as MP4 instead.');
+  const fps = rate&&scale ? rate/scale : (us?1e6/us:100);
+  return {fps, frames, u8, w, h};
+}
+
+async function openClip(file){
+  const fpsSetting=+$('sFps').value||100;
+  if(/\.avi$/i.test(file.name)){
+    const avi=parseAvi(await file.arrayBuffer());
+    return { name:file.name, fps:avi.fps, n:avi.frames.length, filtered:false,
+      blob:i=>new Blob([avi.u8.subarray(avi.frames[i][0],avi.frames[i][0]+avi.frames[i][1])],{type:'image/jpeg'}),
+      bitmap:async i=>createImageBitmap(new Blob([avi.u8.subarray(avi.frames[i][0],avi.frames[i][0]+avi.frames[i][1])],{type:'image/jpeg'})) };
+  }
+  // other formats: step through a video element, keeping a JPEG of each frame for the replay
+  const url=URL.createObjectURL(file), v=document.createElement('video');
+  v.src=url; v.muted=true; v.preload='auto';
+  await new Promise((ok,bad)=>{v.onloadedmetadata=ok; v.onerror=()=>bad(new Error('This video format can\'t be opened in the browser'));});
+  const n=Math.floor(v.duration*fpsSetting), store=[];
+  return { name:file.name, fps:fpsSetting, n, filtered:true, video:v, store,
+    blob:i=>store[i],
+    bitmap:async i=>{ v.currentTime=Math.min(v.duration-1e-3,(i+0.5)/fpsSetting); await new Promise(r=>v.onseeked=r); return createImageBitmap(v); } };
+}
+
+// ---------- pose ----------
+function loadScript(src){ return new Promise((ok,bad)=>{ const s=document.createElement('script'); s.src=src; s.crossOrigin='anonymous'; s.onload=ok; s.onerror=()=>bad(new Error('Could not load the pose model. Check the internet connection.')); document.head.appendChild(s); }); }
+async function getPose(){
+  const m=+$('sModel').value;
+  if(!window.Pose) await loadScript(POSE_BASE+'pose.js');
+  if(poseObj && poseModel===m){ poseObj.reset(); return poseObj; }
+  if(poseObj) { try{ await poseObj.close(); }catch(e){} }
+  poseObj=new Pose({locateFile:f=>POSE_BASE+f});
+  poseObj.setOptions({modelComplexity:m, smoothLandmarks:true, enableSegmentation:false, minDetectionConfidence:0.5, minTrackingConfidence:0.5});
+  poseObj.onResults(r=>{ lastResult=r; });
+  setStatus('Loading pose model…');
+  await poseObj.initialize();
+  poseModel=m;
+  return poseObj;
+}
+
+function autoGain(bmp){
+  const c=new OffscreenCanvas(160,Math.round(160*bmp.height/bmp.width)), x=c.getContext('2d');
+  x.drawImage(bmp,0,0,c.width,c.height);
+  const d=x.getImageData(0,0,c.width,c.height).data, L=[];
+  for(let i=0;i<d.length;i+=4) L.push(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]);
+  L.sort((a,b)=>a-b);
+  const p=L[Math.floor(L.length*0.98)]||1;
+  return Math.max(1,Math.min(5,170/p));
+}
+
+// ---------- run analysis ----------
+async function analyse(file){
+  if(busy) return; busy=true;
+  const st=S[mode], thisMode=mode;
+  try{
+    $('drop').classList.add('hide'); $('progress').classList.add('on'); stopReplay();
+    setStatus('Opening '+file.name);
+    const clip=await openClip(file);
+    let n=clip.n;
+    if(thisMode==='gait') n=Math.min(n, Math.round((+$('sGaitSec').value||5)*clip.fps));
+    const pose=await getPose();
+    const first=await clip.bitmap(0);
+    const W=first.width, H=first.height;
+    view.width=W; view.height=H;
+    const bs=$('sBright').value, gain= bs==='auto'?autoGain(first):+bs;
+    clip.gain=gain; clip.W=W; clip.H=H; clip.n=n; first.close();
+    const pw=Math.min(640,W), ph=Math.round(H*pw/W);
+    const pc=new OffscreenCanvas(pw,ph), px=pc.getContext('2d');
+    const lm=[];
+    setStatus('Analysing');
+    for(let i=0;i<n;i++){
+      const bmp=await clip.bitmap(i);
+      px.filter=gain>1.05?`brightness(${gain.toFixed(2)})`:'none';
+      px.drawImage(bmp,0,0,pw,ph);
+      if(clip.store) clip.store[i]=await pc.convertToBlob({type:'image/jpeg',quality:0.8});
+      lastResult=null;
+      await pose.send({image:pc});
+      const p=lastResult&&lastResult.poseLandmarks;
+      lm.push(p?p.map(q=>[q.x,q.y,q.visibility||0]):null);
+      if(i%3===0||i===n-1){
+        vctx.filter=gain>1.05?`brightness(${gain.toFixed(2)})`:'none';
+        vctx.drawImage(bmp,0,0,W,H); vctx.filter='none';
+        if(lm[i]) drawSkeleton(lm[i],W,H,null);
+        $('progBar').style.width=(100*(i+1)/n)+'%';
+        $('progText').textContent=`Tracking the body… frame ${i+1} of ${n}`;
+      }
+      bmp.close();
+    }
+    if(clip.store) clip.filtered=true;
+    const res= thisMode==='jump'? analyseJump(lm,clip.fps,W,H) : analyseGait(lm,clip.fps,W,H);
+    Object.assign(st,{res,clip,lm,name:file.name,added:false}); if(thisMode==='jump') lastAdded=null;
+    $('progress').classList.remove('on');
+    if(mode===thisMode){ renderSide(); startReplay(); }
+    setStatus(res.error? 'No result' : (thisMode==='jump'?'Jump analysed':'Gait analysed'));
+  }catch(e){
+    console.error(e);
+    $('progress').classList.remove('on');
+    S[thisMode].res={error:e.message||String(e)}; S[thisMode].clip=null;
+    if(mode===thisMode){ renderSide(); $('drop').classList.remove('hide'); }
+    setStatus('Error');
+  }finally{ busy=false; }
+}
+
+// ---------- drawing ----------
+const CONN=[[11,12],[11,23],[12,24],[23,24],[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[27,29],[29,31],[27,31],[24,26],[26,28],[28,30],[30,32],[28,32]];
+const LEFT=new Set([11,13,15,23,25,27,29,31]);
+function drawSkeleton(f,W,H,side){
+  const s=Math.max(2,W/320);
+  const isNear=i=> side===null ? true : (side===0 ? LEFT.has(i) : !LEFT.has(i) && i>10);
+  vctx.lineCap='round';
+  for(const pass of [0,1]){ // far side first, near side on top
+    for(const [a,b] of CONN){
+      const near=isNear(a)&&isNear(b);
+      if((pass===1)!==near) continue;
+      vctx.strokeStyle=near?'#3ddc97':'rgba(140,155,175,.65)';
+      vctx.lineWidth=near?s*2.2:s*1.4;
+      vctx.beginPath(); vctx.moveTo(f[a][0]*W,f[a][1]*H); vctx.lineTo(f[b][0]*W,f[b][1]*H); vctx.stroke();
+    }
+  }
+  for(let i=11;i<33;i++){ if(i>16&&i<23) continue;
+    vctx.fillStyle=isNear(i)?'#fff':'rgba(200,210,220,.7)';
+    vctx.beginPath(); vctx.arc(f[i][0]*W,f[i][1]*H,s*(isNear(i)?2.6:1.8),0,7); vctx.fill(); }
+}
+function drawAngle(J,A,B,label,col,W){ // J = joint, A/B = neighbouring points, all [x,y] in pixels
+  const s=Math.max(1.5,W/420), [jx,jy]=J;
+  const r=Math.min(32*s, Math.hypot(A[0]-jx,A[1]-jy)*0.45, Math.hypot(B[0]-jx,B[1]-jy)*0.45);
+  const a1=Math.atan2(A[1]-jy,A[0]-jx), a2=Math.atan2(B[1]-jy,B[0]-jx);
+  let d=a2-a1; while(d>Math.PI) d-=2*Math.PI; while(d<-Math.PI) d+=2*Math.PI;
+  vctx.fillStyle=col+'44'; vctx.strokeStyle=col; vctx.lineWidth=s*1.5;
+  vctx.beginPath(); vctx.moveTo(jx,jy); vctx.arc(jx,jy,r,a1,a1+d,d<0); vctx.closePath(); vctx.fill(); vctx.stroke();
+  const mid=a1+d/2+Math.PI, lx=jx+Math.cos(mid)*r*1.3, ly=jy+Math.sin(mid)*r*1.3;
+  vctx.font=`700 ${Math.round(16*s)}px system-ui,sans-serif`; vctx.textAlign=Math.cos(mid)<0?'right':'left'; vctx.textBaseline='middle';
+  vctx.lineWidth=s*3; vctx.strokeStyle='rgba(0,0,0,.85)'; vctx.strokeText(label,lx,ly); vctx.fillStyle=col; vctx.fillText(label,lx,ly);
+}
+const pt=(P,k,i)=>[P[k].x[i],P[k].y[i]];
+const lmPt=(f,j,W,H)=>[f[j][0]*W,f[j][1]*H];
+function banner(text,W){
+  const s=Math.max(1.5,W/480);
+  vctx.font=`700 ${Math.round(15*s)}px system-ui,sans-serif`; vctx.textAlign='left'; vctx.textBaseline='bottom';
+  const pad=8*s, tw=vctx.measureText(text).width;
+  vctx.fillStyle='rgba(0,0,0,.7)'; vctx.fillRect(pad, view.height-pad-22*s, tw+2*pad, 22*s);
+  vctx.fillStyle='#fff'; vctx.fillText(text, pad*2, view.height-pad-4*s);
+}
+
+// ---------- replay ----------
+let rafId=null, replayToken=0;
+function stopReplay(){ replayToken++; if(rafId) cancelAnimationFrame(rafId); rafId=null; }
+async function frameImage(clip,i){ return createImageBitmap(clip.blob(i)); }
+function startReplay(){
+  stopReplay();
+  const st=S[mode], {clip,res,lm}=st; if(!clip||!res||res.error) return;
+  const token=replayToken, W=clip.W, H=clip.H;
+  let a=0, b=clip.n-1; const holds=new Map();
+  if(res.type==='jump'){
+    a=Math.max(0,res.lowest-Math.round(0.9*clip.fps)); b=Math.min(clip.n-1,res.landLowest+Math.round(0.5*clip.fps));
+    holds.set(res.lowest,{ms:1800,text:'Lowest point'}); holds.set(res.takeoff,{ms:500,text:'Take-off'}); holds.set(res.landing,{ms:500,text:'Landing'});
+  } else {
+    a=Math.max(0,res.fs[0]-5); b=Math.min(clip.n-1,res.fs[Math.min(res.fs.length-1,4)]+5);
+    for(const f of res.fs) holds.set(f,{ms:900,text:'Foot strike'});
+  }
+  let i=a, nextAt=performance.now(), drawing=false;
+  const step=async now=>{
+    if(token!==replayToken) return;
+    if(now>=nextAt && !drawing){
+      drawing=true;
+      const bmp=await frameImage(clip,i);
+      if(token!==replayToken){ bmp.close(); return; }
+      vctx.filter=(!clip.filtered && clip.gain>1.05)?`brightness(${clip.gain.toFixed(2)})`:'none';
+      vctx.drawImage(bmp,0,0,W,H); vctx.filter='none'; bmp.close();
+      if(lm[i]) drawSkeleton(lm[i],W,H,res.side);
+      const hold=holds.get(i);
+      let tag='';
+      if(res.type==='jump'){
+        if(i===res.lowest){ const P=res.P;
+          drawAngle(pt(P,'knee',i),pt(P,'hip',i),pt(P,'ank',i),'knee '+Math.round(res.kneeLow)+'°','#3ddc97',W);
+          drawAngle(pt(P,'hip',i),pt(P,'sh',i),pt(P,'knee',i),'hip '+Math.round(res.hipLow)+'°','#5aa9ff',W); }
+        tag = i>=res.takeoff && i<res.landing ? `In the air  ${((i-res.takeoff)/clip.fps).toFixed(2)} s` : (hold?hold.text:'');
+      } else {
+        if(hold && lm[i]){ const w=res.who[i], f=lm[i];
+          drawAngle(lmPt(f,25+w,W,H),lmPt(f,23+w,W,H),lmPt(f,27+w,W,H),'knee '+Math.round(res.kneeA[i][w])+'°','#3ddc97',W); tag='Foot strike'; }
+        drawCursor(i);
+      }
+      if(tag) banner(tag,W);
+      const ms=1000/(clip.fps*speed);
+      nextAt=now+(hold?hold.ms:ms);
+      i++; if(i>b){ i=a; nextAt+=700; }
+      drawing=false;
+    }
+    rafId=requestAnimationFrame(step);
+  };
+  rafId=requestAnimationFrame(step);
+}
+
+// ---------- side panel ----------
+function fmt(v,d=0){ return isFinite(v)? v.toFixed(d):'–'; }
+function getLb(){ try{ return JSON.parse(localStorage.getItem('oddJumpLb')||'[]'); }catch(e){ return []; } }
+function setLb(a){ try{ localStorage.setItem('oddJumpLb',JSON.stringify(a)); }catch(e){} }
+let lastAdded=null;
+
+function renderSide(){
+  const side=$('side'), st=S[mode], r=st.res;
+  if(!r){
+    side.innerHTML= mode==='jump'? introJump() : introGait();
+    if(mode==='jump') side.insertAdjacentHTML('beforeend', lbPanel(false));
+    return;
+  }
+  if(r.error){
+    side.innerHTML=`<div class="panel"><h3>Couldn't get a result</h3><div class="err">${r.error}</div><p class="note" style="margin-top:10px">Check the person is side-on, the whole body is in shot (head to feet) and the lighting is good, then try again.</p></div>`;
+    if(mode==='jump') side.insertAdjacentHTML('beforeend', lbPanel(false));
+    return;
+  }
+  if(r.type==='jump'){
+    side.innerHTML=`
+      <div class="cards">
+        <div class="card big"><div class="k">Jump height</div><div class="v">${fmt(r.height*100,1)}<small>cm</small></div>
+          <div class="h">From time in the air: ${fmt(r.flight,2)} s. Height = g × t² ÷ 8</div></div>
+        <div class="card"><div class="k">Knee bend</div><div class="v">${fmt(r.kneeLow)}<small>°</small></div><div class="h">At the lowest point of the dip</div></div>
+        <div class="card"><div class="k">Hip bend</div><div class="v">${fmt(r.hipLow)}<small>°</small></div><div class="h">At the lowest point of the dip</div></div>
+      </div>
+      <div class="panel"><h3>Foot height</h3><canvas id="chart"></canvas></div>
+      ${lbPanel(true)}`;
+    drawJumpChart(r);
+  } else {
+    side.innerHTML=`
+      <div class="cards">
+        <div class="card big"><div class="k">Cadence</div><div class="v">${fmt(r.cadence)}<small>steps/min</small></div>
+          <div class="h">From the rhythm of ${r.fs.length} steps (${fmt(r.cadence/60,2)} steps every second)</div></div>
+        <div class="card"><div class="k">Knee at foot strike</div><div class="v">${fmt(r.kneeFS)}<small>°</small></div><div class="h">How bent the knee is as the foot lands</div></div>
+        <div class="card"><div class="k">Peak knee bend</div><div class="v">${fmt(r.swingPeak)}<small>°</small></div><div class="h">Most bent as the leg swings through</div></div>
+      </div>
+      <div class="panel"><h3>Knee bend through each stride</h3><canvas id="chart"></canvas></div>`;
+    drawGaitChart(r,null);
+  }
+  const add=$('lbAdd'); if(add) add.onclick=()=>{
+    const nm=($('lbName').value||'').trim().slice(0,18)||'Visitor';
+    const a=getLb(); const e={n:nm,h:Math.round(r.height*1000)/10,t:Date.now()}; a.push(e);
+    a.sort((x,y)=>y.h-x.h); setLb(a.slice(0,50)); lastAdded=e.t; S.jump.added=true; renderSide();
+  };
+}
+function lbPanel(withAdd){
+  const a=getLb().slice(0,10);
+  const items=a.length? a.map(e=>`<li class="${e.t===lastAdded?'me':''}"><span class="n">${esc(e.n)}</span><b>${e.h.toFixed(1)} cm</b></li>`).join('') : '<p class="note">No jumps yet. Be the first!</p>';
+  return `<div class="panel"><h3>Leaderboard</h3><ol class="lb">${items}</ol>
+    ${withAdd&&!S.jump.added?`<div class="addrow"><input id="lbName" placeholder="First name (optional)" maxlength="18"><button class="btn small" id="lbAdd">Add</button></div>`:''}</div>`;
+}
+function esc(s){ return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function introJump(){ return `<div class="panel"><h3>How it works</h3><p class="note" style="font-size:16px">A computer vision model finds 33 points on the body in every frame, with no markers. From those points we time how long the feet are off the ground, which gives jump height, and measure how much the knees and hips bend in the dip before take-off.</p></div>`; }
+function introGait(){ return `<div class="panel"><h3>How it works</h3><p class="note" style="font-size:16px">The camera films at high speed from the side. A computer vision model tracks the body without markers, works out step rhythm from the bounce of the hips, spots each foot strike as the leading heel reaches forward and lands, and measures the knee angle through every stride.</p></div>`; }
+
+function chartCtx(){
+  const c=$('chart'); if(!c) return null; const dpr=window.devicePixelRatio||1;
+  const w=c.clientWidth, h=c.clientHeight; c.width=w*dpr; c.height=h*dpr; const x=c.getContext('2d'); x.scale(dpr,dpr); return {x,w,h};
+}
+function drawJumpChart(r){
+  const C=chartCtx(); if(!C) return; const {x,w,h}=C, st=S.jump, n=st.clip.n;
+  const y=r.foot.map(v=>r.ground-v); const mx=Math.max(...y)*1.1||1, mn=Math.min(0,Math.min(...y));
+  const X=i=>8+(w-16)*i/(n-1), Y=v=>h-18-(h-30)*(v-mn)/(mx-mn);
+  x.fillStyle='rgba(61,220,151,.13)'; x.fillRect(X(r.takeoff),6,X(r.landing)-X(r.takeoff),h-24);
+  x.strokeStyle='#3ddc97'; x.lineWidth=2.5; x.beginPath(); y.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v))); x.stroke();
+  x.strokeStyle='#ffffff33'; x.lineWidth=1; x.beginPath(); x.moveTo(8,Y(0)); x.lineTo(w-8,Y(0)); x.stroke();
+  x.fillStyle='#8b95a5'; x.font='12px system-ui'; x.textAlign='center';
+  x.fillText(`in the air ${r.flight.toFixed(2)} s`,(X(r.takeoff)+X(r.landing))/2,h-4);
+  x.strokeStyle='#5aa9ff'; x.setLineDash([4,4]); x.beginPath(); x.moveTo(X(r.lowest),6); x.lineTo(X(r.lowest),h-18); x.stroke(); x.setLineDash([]);
+  x.textAlign='left'; x.fillStyle='#5aa9ff'; x.fillText('lowest point',X(r.lowest)+4,16);
+}
+function drawGaitChart(r,cur){
+  const C=chartCtx(); if(!C) return; const {x,w,h}=C, n=S.gait.clip.n;
+  const a=Math.max(0,r.fs[0]-5), b=Math.min(n-1,r.fs[Math.min(r.fs.length-1,4)]+5); // same window as the replay
+  const mx=Math.max(...r.kMax.slice(a,b+1))+8, mn=Math.min(0,...r.kMin.slice(a,b+1));
+  const X=i=>36+(w-44)*(i-a)/(b-a), Y=v=>h-20-(h-30)*(v-mn)/(mx-mn);
+  x.fillStyle='#8b95a5'; x.font='12px system-ui'; x.textAlign='right';
+  for(const t of [0,30,60,90,120]) if(t<mx){ x.fillText(t+'°',30,Y(t)+4); x.strokeStyle='#ffffff14'; x.lineWidth=1; x.beginPath(); x.moveTo(36,Y(t)); x.lineTo(w-8,Y(t)); x.stroke(); }
+  const line=(arr,col,lw)=>{ x.strokeStyle=col; x.lineWidth=lw; x.beginPath(); for(let i=a;i<=b;i++) i===a?x.moveTo(X(i),Y(arr[i])):x.lineTo(X(i),Y(arr[i])); x.stroke(); };
+  line(r.kMin,'#5aa9ff',2); line(r.kMax,'#3ddc97',2.5);
+  x.fillStyle='#fff'; for(const f of r.fs) if(f>=a&&f<=b){ x.beginPath(); x.arc(X(f),Y(r.kneeA[f][r.who[f]]),4,0,7); x.fill(); }
+  x.textAlign='left'; x.font='12px system-ui';
+  x.fillStyle='#3ddc97'; x.fillText('swinging leg',40,h-4); x.fillStyle='#5aa9ff'; x.fillText('supporting leg',130,h-4); x.fillStyle='#fff'; x.fillText('● foot strike',235,h-4);
+  if(cur!=null && cur>=a && cur<=b){ x.strokeStyle='#ffb547'; x.lineWidth=1.5; x.beginPath(); x.moveTo(X(cur),4); x.lineTo(X(cur),h-20); x.stroke(); }
+}
+let lastCursor=-1;
+function drawCursor(i){ if(mode!=='gait'||!S.gait.res||S.gait.res.error) return; if(Math.abs(i-lastCursor)<2 && i>lastCursor) return; lastCursor=i; drawGaitChart(S.gait.res,i); }
+
+// ---------- folder watching ----------
+const watchers={jump:null,gait:null};
+async function watchFolder(){
+  if(!window.showDirectoryPicker){ alert('Folder watching needs Chrome or Edge.'); return; }
+  let dir; try{ dir=await showDirectoryPicker({mode:'read'}); }catch(e){ return; }
+  const m=mode, seen=new Map();
+  for await (const [name,h] of dir.entries()) if(h.kind==='file') { const f=await h.getFile(); seen.set(name,f.lastModified+':'+f.size); }
+  if(watchers[m]) clearInterval(watchers[m].timer);
+  const pending=new Map();
+  const tick=async()=>{
+    if(busy) return;
+    try{
+      for await (const [name,h] of dir.entries()){
+        if(h.kind!=='file' || !/\.(avi|mp4|mov|webm)$/i.test(name)) continue;
+        const f=await h.getFile(), sig=f.lastModified+':'+f.size;
+        if(seen.get(name)===sig) continue;
+        if(pending.get(name)===sig){ // unchanged since the last check, so the camera has finished writing it
+          seen.set(name,sig); pending.delete(name);
+          if(mode!==m) switchMode(m);
+          await analyse(f); return;
+        }
+        pending.set(name,sig);
+      }
+    }catch(e){ console.warn(e); }
+  };
+  watchers[m]={dir:dir.name,timer:setInterval(tick,1500)};
+  updateWatch();
+}
+function updateWatch(){
+  const w=watchers[mode];
+  $('watchStatus').innerHTML= w? `Watching <b>${esc(w.dir)}</b>. New clips will be analysed automatically.` : '';
+  $('watchBtn').textContent= w? 'Change folder' : 'Watch a folder';
+}
+
+// ---------- UI wiring ----------
+function setStatus(t){ $('statusPill').textContent=t; }
+function switchMode(m){
+  mode=m; document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+  $('dropTitle').textContent= m==='jump'?'Drop a jump clip here':'Drop a treadmill clip here';
+  $('dropText').textContent= m==='jump'
+    ? 'Film side-on with the whole body in view. Drag the saved video in, or watch the camera\'s save folder so each new clip is analysed automatically.'
+    : 'Film side-on to the treadmill with the whole body in view. Walking or running both work. Only the first few seconds are analysed (see Settings).';
+  updateWatch(); stopReplay(); lastCursor=-1;
+  const st=S[m];
+  if(st.clip && st.res && !st.res.error){ $('drop').classList.add('hide'); view.width=st.clip.W; view.height=st.clip.H; startReplay(); }
+  else { $('drop').classList.remove('hide'); vctx.clearRect(0,0,view.width,view.height); }
+  renderSide();
+}
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{ if(!busy) switchMode(b.dataset.mode); });
+document.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{ speed=+b.dataset.speed; document.querySelectorAll('[data-speed]').forEach(x=>x.classList.toggle('on',x===b)); });
+$('newBtn').onclick=()=>{ if(busy) return; stopReplay(); S[mode]={res:null,clip:null,lm:null,name:null}; lastAdded=null; switchMode(mode); };
+$('pickBtn').onclick=()=>$('fileIn').click();
+$('fileIn').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if(f) analyse(f); };
+$('watchBtn').onclick=watchFolder;
+const stage=$('stage');
+stage.addEventListener('dragover',e=>{e.preventDefault(); $('drop').classList.remove('hide'); $('drop').classList.add('over');});
+stage.addEventListener('dragleave',e=>{ if(e.target===$('drop')) $('drop').classList.remove('over'); });
+stage.addEventListener('drop',e=>{ e.preventDefault(); $('drop').classList.remove('over'); const f=e.dataTransfer.files[0]; if(f) analyse(f); else if(S[mode].clip) $('drop').classList.add('hide'); });
+$('settingsBtn').onclick=()=>$('settings').showModal();
+$('closeSettings').onclick=()=>$('settings').close();
+$('clearLb').onclick=()=>{ if(confirm('Clear the jump leaderboard?')){ setLb([]); lastAdded=null; renderSide(); } };
+$('fsBtn').onclick=()=>{ if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(()=>{}); };
+window.addEventListener('resize',()=>{ const r=S[mode].res; if(r&&!r.error){ if(r.type==='jump') drawJumpChart(r); else drawGaitChart(r,null);} });
+switchMode('jump');
+</script>
+</body>
+</html>
