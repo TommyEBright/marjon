@@ -322,29 +322,34 @@ function analyse(raw,g0,sdBW=0.02){
   const fs=100, t0=raw[0][0], t1=raw[raw.length-1][0], n=Math.floor((t1-t0)/10)+1, bw=new Array(n);
   let j=0; for(let i=0;i<n;i++){ const t=t0+i*10; while(j<raw.length-2&&raw[j+1][0]<t) j++;
     const [ta,a]=raw[j],[tb,b]=raw[j+1]; bw[i]=(a+(b-a)*Math.max(0,Math.min(1,(t-ta)/((tb-ta)||1))))/g0; }
-  // flight: a stretch well below body weight that follows a push and ends in a landing
-  // (the dip before a jump can also drop below body weight, so it must not count)
-  const thr=0.5, runs=[]; let st=-1;
-  for(let i=0;i<=n;i++){ const air=i<n&&bw[i]<thr;
-    if(air&&st<0) st=i; if(!air&&st>=0){ runs.push([st,i]); st=-1; } }
-  const maxIn=(a,b)=>{ let m=-1e9; for(let i=Math.max(0,a);i<Math.min(n,b);i++) m=Math.max(m,bw[i]); return m; };
-  let best=null;
-  for(const [a,b] of runs){
-    if(b-a<12) continue;                                   // under 0.12 s
-    if(maxIn(a-30,a)<1.2) continue;                        // no push just before
-    if(b<n && maxIn(b,b+25)<1.3) continue;                 // no landing just after
-    if(!best||b-a>best[1]-best[0]) best=[a,b];
+  // 1) find the flight "core": low readings, joining pieces split by brief mid-air wobbles (up to 80 ms)
+  const low=0.5, runs=[]; let st=-1, gap=0;
+  for(let i=0;i<=n;i++){
+    const isLow=i<n&&bw[i]<low;
+    if(isLow){ if(st<0) st=i; gap=0; }
+    else if(st>=0){ gap++; if(gap>8||i===n){ runs.push([st,i-gap+1]); st=-1; gap=0; } }
   }
-  if(!best) return {error:'nojump'};
-  if(best[1]>=n) return {landingAbs:null};                  // still in the air
-  // the in-air level (ideally zero, but a hand-held phone never reads exactly zero) sets the edge threshold
-  const mid=bw.slice(best[0]+3,best[1]-3).sort((a,b)=>a-b), air=mid.length?mid[mid.length>>1]:0;
+  if(st>=0) runs.push([st,n]);
+  const argmax=(a,b)=>{ let m=-1e9,k=-1; for(let i=Math.max(0,a);i<Math.min(n,b);i++) if(bw[i]>m){m=bw[i];k=i;} return [k,m]; };
+  let core=null;
+  for(const [a,b] of runs){
+    if(b-a<10) continue;                                   // under 0.1 s
+    if(argmax(a-35,a)[1]<1.2) continue;                    // must follow a push (rules out the dip)
+    if(b<n && argmax(b,b+30)[1]<1.3) continue;             // must end in a landing
+    if(!core||b-a>core[1]-core[0]) core=[a,b];
+  }
+  if(!core) return {error:'nojump'};
+  if(core[1]>=n-2) return {landingAbs:null};               // still in the air
+  // 2) anchor on the push peak before and the landing spike after, then find where the force leaves and returns
+  const [P]=argmax(core[0]-35,core[0]), [Lk]=argmax(core[1],core[1]+30);
+  const inAir=bw.slice(core[0],core[1]).sort((x,y)=>x-y), air=inAir[Math.floor(inAir.length*0.5)];
   const e=Math.min(0.6, air+Math.max(0.12,5*sdBW));
-  let i0=best[0], i1=best[1];
-  while(i0>1 && bw[i0-1]<thr) i0--; while(i0<i1 && bw[i0]>e) i0++;
-  while(i1>i0 && bw[i1-1]>e) i1--;
+  let i0=P; while(i0<Lk && bw[i0]>=e) i0++;                // first sample below e after the push
+  let i1=Lk; while(i1>i0 && bw[i1-1]>=e) i1--;             // first sample of the landing rise
+  if(i1-i0<8) return {error:'nojump'};
   const cross=i=>{ const a=bw[i-1],b=bw[i]; return i-1+(e-a)/((b-a)||1); };
   const to=cross(i0), ld=cross(i1);
+  const best=[i0,i1];
   const flight=(ld-to)/fs; if(flight>1.0) return {error:'odd'};
   const height=9.81*flight*flight/8;
   const f=butter(bw,15,fs);
@@ -376,7 +381,7 @@ function showResults(r){
   if(r.airLevel>0.25) q.push('<span class="warn">The phone moved about in the air. Keep it pressed firmly to your chest.</span>');
   if(r.postStill===false) q.push('<span class="warn">You moved after landing, so this one may be less reliable.</span>');
   $('quality').innerHTML=q.join(' ');
-  $('hist').innerHTML=jumps.map((h,i)=>`<div><span>Jump ${i+1}</span><b>${(h*100).toFixed(1)} cm</b></div>`).join('');
+  $('hist').innerHTML=jumps.map((h,i)=>`<div${i===jumps.length-1?' style="color:var(--accent)"':''}><span>Jump ${i+1}${i===jumps.length-1?' (this one)':''}</span><b>${(h*100).toFixed(1)} cm</b></div>`).join('');
   show('s-results');
   requestAnimationFrame(()=>drawChart($('chart'),r,false));
 }
