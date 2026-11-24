@@ -292,7 +292,6 @@ async function doJump(useDemo){
   if(!okStill) return fail('wobbly');
   cancelAnimationFrame(traceRAF); drawTrace(g0);
 
-  live('Get ready','Jump as high as you can and land with straight legs'); say('Jump as high as you can, and land with straight legs.'); await wait(2600); if(my!==run) return;
   // countdown
   for(const n of ['3','2','1']){ live(n,'Get ready to jump'); say(n); beep(880,120); buzz(60); await wait(850); if(my!==run) return; }
   const cueAt=performance.now(), calFrom=samples.length; live('JUMP!','As high as you can'); say('Jump!'); beep(1320,300); buzz(200);
