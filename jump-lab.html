@@ -144,6 +144,7 @@ a{color:var(--blue)}
       <span><i style="background:#3ddc9755"></i>In the air</span>
       <span><i style="background:#ff6b6b55"></i>Landing</span>
     </div>
+    <label class="note" id="cmpRow" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="cmp"> Also show the uncorrected curve (grey)</label>
     <details>
       <summary>What am I looking at?</summary>
       <p>The line shows how hard the ground pushed on you, in body weights. Standing still is 1. As you dip, you briefly "unweight" and it drops below 1. Then you push hard into the floor, often to 2–3 times your body weight. In the air it falls to zero, and landing gives a big spike.</p>
@@ -183,19 +184,23 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 function live(big,sub){ $('liveBig').textContent=big; if(sub!==undefined) $('liveSub').textContent=sub; }
 
 // ---------- sensor ----------
-let sensorObj=null, sensorSrc='';
+let sensorObj=null, gyroObj=null, sensorSrc='';
 function onMotion(e){
   const a=e.accelerationIncludingGravity; if(!a||a.x==null) return;
-  samples.push([e.timeStamp||performance.now(), Math.hypot(a.x,a.y,a.z), a.x,a.y,a.z, e.interval||0]);
+  const rr=e.rotationRate, d2r=Math.PI/180;
+  const w= rr&&rr.beta!=null ? [rr.beta*d2r, rr.gamma*d2r, rr.alpha*d2r] : [NaN,NaN,NaN];
+  samples.push([e.timeStamp||performance.now(), Math.hypot(a.x,a.y,a.z), a.x,a.y,a.z, e.interval||0, ...w]);
 }
 async function startSensor(){
   samples=[];
   if('Accelerometer' in window){ // Android Chrome: faster and evenly timed
     try{
       const acc=new Accelerometer({frequency:200});
+      let gyroLast=[NaN,NaN,NaN];
+      try{ const gy=new Gyroscope({frequency:200}); gy.onreading=()=>{ gyroLast=[gy.x,gy.y,gy.z]; }; gy.onerror=()=>{}; gy.start(); gyroObj=gy; }catch(_){}
       await new Promise((ok,bad)=>{
         acc.onerror=ev=>bad(ev.error||new Error('acc'));
-        acc.onreading=()=>samples.push([acc.timestamp||performance.now(), Math.hypot(acc.x,acc.y,acc.z), acc.x,acc.y,acc.z, 0]);
+        acc.onreading=()=>samples.push([acc.timestamp||performance.now(), Math.hypot(acc.x,acc.y,acc.z), acc.x,acc.y,acc.z, 0, ...gyroLast]);
         acc.start(); setTimeout(()=>samples.length>20?ok():bad(new Error('slow')),800);
       });
       sensorObj=acc; sensorSrc='Accelerometer'; listening=true; return;
@@ -210,7 +215,7 @@ async function startSensor(){
   await wait(800);
   if(samples.length<5){ stopSensor(); throw new Error('nosensor'); }
 }
-function stopSensor(){ window.removeEventListener('devicemotion',onMotion); try{ sensorObj&&sensorObj.stop(); }catch(e){} sensorObj=null; listening=false; }
+function stopSensor(){ window.removeEventListener('devicemotion',onMotion); try{ sensorObj&&sensorObj.stop(); }catch(e){} try{ gyroObj&&gyroObj.stop(); }catch(e){} sensorObj=null; gyroObj=null; listening=false; }
 
 // phones sometimes deliver motion events in bursts; if so, rebuild an even timeline from the reported interval
 function cleanTimes(raw){
@@ -242,7 +247,7 @@ function startDemo(){
   samples=[]; listening=true; sensorSrc='Demo';
   demoTimer=setInterval(()=>{ const now=performance.now();
     const bw = demoStart==null ? 1 : demoSignal((now-demoStart)/1000);
-    const m=9.81*(bw+(Math.random()-0.5)*0.05); samples.push([now, m, 0, m, 0, 16.7]); },16.7);
+    const m=9.81*(bw+(Math.random()-0.5)*0.05); samples.push([now, m, 0, m, 0, 16.7, 0,0,0]); },16.7);
 }
 function stopDemo(){ clearInterval(demoTimer); demoTimer=null; demoStart=null; listening=false; }
 
@@ -304,14 +309,44 @@ async function doJump(useDemo){
   live('Stay still','Nearly done…'); say('Stay still.');
   await wait(1600); if(my!==run) return;
   const raw=seg(); useDemo?stopDemo():stopSensor(); cancelAnimationFrame(traceRAF);
-  res=analyse(raw, g0, sdBW);
+  const tc=useDemo?{ok:false,why:'demo'}:tiltCorrect(raw);
+  res=analyse(raw, g0, sdBW, tc.ok?tc.v:null);
   if(!res || res.error){ return fail(res&&res.error||'nojump'); }
   const tail=raw.slice(-Math.round(rateOf(raw)*0.8)).map(r=>r[1]/g0), tm=tail.reduce((a,b)=>a+b,0)/tail.length;
   res.postStill = Math.sqrt(tail.reduce((a,b)=>a+(b-tm)**2,0)/tail.length) < 0.08 && Math.abs(tm-1)<0.1;
-  res.rate=rateOf(raw); res.src=sensorSrc; res.noise=sdBW; res.raw=raw; res.g0=g0;
+  res.rate=rateOf(raw); res.src=sensorSrc; res.noise=sdBW; res.raw=raw; res.g0=g0; res.tc=tc;
   say('Done. Jump height '+(res.height*100).toFixed(0)+' centimetres.'); beep(990,160);
   live('Done!',''); await wait(500);
   showResults(res);
+}
+
+// ---------- tilt correction ----------
+// Follow which way is "down" in the phone's own axes by turning the starting gravity direction with the gyroscope,
+// then keep only the part of the acceleration that acts vertically. The gyro sign convention differs between some
+// phones, so both are tried and the one that leaves the least sideways acceleration is kept.
+function tiltCorrect(raw){
+  if(raw.length<60 || raw.some(r=>!isFinite(r[6])||!isFinite(r[7])||!isFinite(r[8]))) return {ok:false, why:'no gyroscope'};
+  const nS=Math.max(10,Math.min(40,raw.length>>3));
+  const unitMean=rows=>{ const s=[0,0,0]; for(const r of rows){ s[0]+=r[2]; s[1]+=r[3]; s[2]+=r[4]; } const m=Math.hypot(...s)||1; return s.map(v=>v/m); };
+  const gStart=unitMean(raw.slice(0,nS)), gEnd=unitMean(raw.slice(-nS));
+  let best=null;
+  for(const sign of [1,-1]){
+    let g=gStart.slice(), side=0; const v=[];
+    for(let i=0;i<raw.length;i++){
+      if(i>0){ const dt=(raw[i][0]-raw[i-1][0])/1000, w=[raw[i][6]*sign,raw[i][7]*sign,raw[i][8]*sign];
+        const c=[w[1]*g[2]-w[2]*g[1], w[2]*g[0]-w[0]*g[2], w[0]*g[1]-w[1]*g[0]];
+        g=[g[0]-c[0]*dt, g[1]-c[1]*dt, g[2]-c[2]*dt]; const m=Math.hypot(...g)||1; g=g.map(x=>x/m); }
+      const ax=raw[i][2], ay=raw[i][3], az=raw[i][4], vert=ax*g[0]+ay*g[1]+az*g[2];
+      v.push(vert); side+=Math.max(0, ax*ax+ay*ay+az*az-vert*vert);
+    }
+    const cosEnd=g[0]*gEnd[0]+g[1]*gEnd[1]+g[2]*gEnd[2];
+    if(!best || side<best.side) best={v, side, cosEnd, sign};
+  }
+  const tilt=Math.acos(Math.min(1,gStart[0]*gEnd[0]+gStart[1]*gEnd[1]+gStart[2]*gEnd[2]))*180/Math.PI;
+  best.endErr=Math.acos(Math.min(1,best.cosEnd))*180/Math.PI;
+  best.ok = best.endErr<12;
+  if(!best.ok) best.why='orientation drifted';
+  return best;
 }
 
 // ---------- analysis ----------
@@ -320,12 +355,15 @@ function butter(x,fc,fs){ // 2nd-order Butterworth, forwards and backwards
   const p=s=>{ const y=[]; let x1=s[0],x2=s[0],y1=s[0],y2=s[0]; for(const v of s){ const o=b0*v+b1*x1+b0*x2-a1*y1-a2*y2; x2=x1;x1=v;y2=y1;y1=o;y.push(o);} return y; };
   return p(p(x).reverse()).reverse();
 }
-function analyse(raw,g0,sdBW=0.02){
+function analyse(raw,g0,sdBW=0.02,vert=null){
   if(raw.length<30) return null;
   // resample to 100 Hz (phones deliver uneven timing)
   const fs=100, t0=raw[0][0], t1=raw[raw.length-1][0], n=Math.floor((t1-t0)/10)+1, bw=new Array(n);
   let j=0; for(let i=0;i<n;i++){ const t=t0+i*10; while(j<raw.length-2&&raw[j+1][0]<t) j++;
     const [ta,a]=raw[j],[tb,b]=raw[j+1]; bw[i]=(a+(b-a)*Math.max(0,Math.min(1,(t-ta)/((tb-ta)||1))))/g0; }
+  let bwV=null;
+  if(vert){ bwV=new Array(n); let k=0; for(let i=0;i<n;i++){ const t=t0+i*10; while(k<raw.length-2&&raw[k+1][0]<t) k++;
+    const ta=raw[k][0], tb=raw[k+1][0]; bwV[i]=(vert[k]+(vert[k+1]-vert[k])*Math.max(0,Math.min(1,(t-ta)/((tb-ta)||1))))/g0; } }
   // 1) find the flight "core": low readings, joining pieces split by brief mid-air wobbles (up to 80 ms)
   const low=0.5, runs=[]; let st=-1, gap=0;
   for(let i=0;i<=n;i++){
@@ -356,7 +394,7 @@ function analyse(raw,g0,sdBW=0.02){
   const best=[i0,i1];
   const flight=(ld-to)/fs; if(flight>1.0) return {error:'odd'};
   const height=9.81*flight*flight/8;
-  const f=butter(bw,15,fs);
+  const fMag=butter(bw,15,fs), f=bwV?butter(bwV,15,fs):fMag; // timing from the total signal, force curve from the vertical one
   const toI=best[0];
   // peak push, then the unweighting trough before it, then movement onset
   const w0=Math.max(1,toI-150);
@@ -364,7 +402,7 @@ function analyse(raw,g0,sdBW=0.02){
   let tr=pkI, mn=1e9; for(let i=w0;i<pkI;i++) if(f[i]<mn){mn=f[i];tr=i;}
   let on=tr; while(on>0 && f[on]<0.95) on--;
   let up=tr; while(up<toI && f[up]<1) up++;               // where the dip ends and the push begins
-  return {bw:f, fs, to, ld, toI, landI:best[1], tr, on, up, flight, height, peak:pk, ttt:(to-on)/fs, airLevel:air,
+  return {bw:f, bwMag:fMag, tilted:!!bwV, fs, to, ld, toI, landI:best[1], tr, on, up, flight, height, peak:pk, ttt:(to-on)/fs, airLevel:air,
     landingAbs:t0+ld*10};
 }
 
@@ -382,11 +420,14 @@ function showResults(r){
   $('histCard').style.display=jumps.length>1?'block':'none';
   const q=[]; q.push(`Recorded at about <b>${Math.round(r.rate)}</b> samples per second (${r.src}).`);
   if(r.rate<90) q.push('At this rate expect jump height to be within about ±3–4 cm.');
+  q.push(r.tilted ? `Force curve corrected for phone tilt (${Math.round(r.tc.tilt||0)}° start to end, gyro check ${r.tc.endErr.toFixed(0)}°).`
+                  : `Force curve not tilt-corrected (${r.tc&&r.tc.why||'unavailable'}).`);
   if(r.airLevel>0.25) q.push('<span class="warn">The phone moved about in the air. Keep it pressed firmly to your chest.</span>');
   if(r.postStill===false) q.push('<span class="warn">You moved after landing, so this one may be less reliable.</span>');
   $('quality').innerHTML=q.join(' ');
   $('hist').innerHTML=jumps.map((h,i)=>`<div${i===jumps.length-1?' style="color:var(--accent)"':''}><span>Jump ${i+1}${i===jumps.length-1?' (this one)':''}</span><b>${(h*100).toFixed(1)} cm</b></div>`).join('');
   show('s-results');
+  $('cmpRow').style.display=r.tilted?'flex':'none';
   requestAnimationFrame(()=>drawChart($('chart'),r,false));
 }
 function drawChart(c,r,forCard){
@@ -404,6 +445,8 @@ function drawChart(c,r,forCard){
   x.setLineDash([]);
   x.save(); x.translate(forCard?24:10,(h-padB)/2); x.rotate(-Math.PI/2); x.textAlign='center'; x.fillText('body weights',0,0); x.restore();
   x.textAlign='center'; x.fillText('time',(padL+w)/2,h-(forCard?12:4));
+  if(!forCard && r.tilted && $('cmp').checked){ x.strokeStyle='#93a0b288'; x.lineWidth=2; x.beginPath();
+    for(let i=a;i<=b;i++) i===a?x.moveTo(X(i),Y(r.bwMag[i])):x.lineTo(X(i),Y(r.bwMag[i])); x.stroke(); }
   x.strokeStyle='#eef1f5'; x.lineWidth=forCard?5:2.5; x.lineJoin='round'; x.beginPath();
   for(let i=a;i<=b;i++) i===a?x.moveTo(X(i),Y(r.bw[i])):x.lineTo(X(i),Y(r.bw[i])); x.stroke();
 }
@@ -456,10 +499,13 @@ $('errRetry').onclick=()=>doJump(false);
 $('errDemo').onclick=()=>doJump(true);
 $('cancel').onclick=()=>{ run++; stopSensor(); stopDemo(); cancelAnimationFrame(traceRAF); try{speechSynthesis.cancel();}catch(e){} show('s-how'); };
 $('share').onclick=shareResult;
+$('cmp').onchange=()=>{ if(lastResult) drawChart($('chart'),lastResult,false); };
 $('csv').onclick=()=>{ const r=lastResult; if(!r||!r.raw) return;
   const t0=r.raw[0][0], lines=['# Jump Lab raw data, source '+r.src+', g0 '+r.g0.toFixed(4)+' m/s2, flight '+r.flight.toFixed(4)+' s, height '+(r.height*100).toFixed(2)+' cm',
-    'time_ms,ax,ay,az,magnitude,bodyweights'];
-  for(const s of r.raw) lines.push([(s[0]-t0).toFixed(2),(+s[2]).toFixed(4),(+s[3]).toFixed(4),(+s[4]).toFixed(4),s[1].toFixed(4),(s[1]/r.g0).toFixed(4)].join(','));
+    'time_ms,ax,ay,az,wx,wy,wz,magnitude,vertical,bodyweights_total,bodyweights_vertical'];
+  const V=r.tc&&r.tc.v;
+  r.raw.forEach((s,i)=>{ const v=V?V[i]:NaN; lines.push([(s[0]-t0).toFixed(2),(+s[2]).toFixed(4),(+s[3]).toFixed(4),(+s[4]).toFixed(4),
+    (+s[6]).toFixed(4),(+s[7]).toFixed(4),(+s[8]).toFixed(4),s[1].toFixed(4),isFinite(v)?v.toFixed(4):'',(s[1]/r.g0).toFixed(4),isFinite(v)?(v/r.g0).toFixed(4):''].join(',')); });
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
   a.download='jumplab_'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)+'.csv'; a.click(); };
 if(new URLSearchParams(location.search).get('demo')==='1') { $('goJump').onclick=()=>doJump(true); }
