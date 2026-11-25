@@ -61,6 +61,7 @@ details p{font-size:15px}
 .figure{display:flex;justify-content:center;margin:4px 0 12px}
 a{color:var(--blue)}
 .foot{margin-top:18px;text-align:center}
+.credit{margin-top:22px;padding-top:14px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);text-align:center;line-height:1.5}
 .hist{font-size:15px}
 .hist div{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line)}
 .hist div:last-child{border-bottom:0}
@@ -81,6 +82,7 @@ a{color:var(--blue)}
   </div>
   <button class="btn" id="goHow">Let's go</button>
   <p class="note" style="margin-top:14px">Everything stays on your phone. Nothing is uploaded or saved anywhere else.</p>
+  <p class="credit">Developed by Dr Tommy Bright, Senior Lecturer in Sports Biomechanics, Plymouth Marjon University</p>
 </section>
 
 <!-- 1. how to -->
@@ -103,7 +105,7 @@ a{color:var(--blue)}
     <li><b>Hold your phone flat against your chest</b> with both hands, elbows tucked in. Keep it pressed there the whole time. Don't swing your arms.</li>
     <li><b>Stand still</b> when you're told to. The phone uses this moment to weigh you.</li>
     <li>When you hear <b>"Jump!"</b>, dip down and jump straight up as high as you can.</li>
-    <li><b>Land on your toes with straight legs</b>, then bend your knees. Stand still again until it says "Done".</li>
+    <li><b>Land on both feet</b> and stand still again until it says "Done".</li>
   </ol>
   <div class="card note"><span class="warn">Safety:</span> find a clear space on a flat, non-slip floor, with nothing above your head. Turn your volume up so you can hear the countdown.</div>
   <button class="btn" id="goJump">I'm ready</button>
@@ -157,6 +159,7 @@ a{color:var(--blue)}
   <button class="btn" id="again">Jump again</button>
   <button class="btn alt" id="share">Share my result</button>
   <button class="btn alt" id="csv" style="font-size:15px;padding:12px">Download raw data (CSV)</button>
+  <p class="credit">Developed by Dr Tommy Bright, Senior Lecturer in Sports Biomechanics, Plymouth Marjon University</p>
 </section>
 
 <!-- error -->
@@ -297,21 +300,17 @@ async function doJump(useDemo){
   const cueAt=performance.now(), calFrom=samples.length; live('JUMP!','As high as you can'); say('Jump!'); beep(1320,300); buzz(200);
   if(useDemo) demoStart=performance.now();
 
-  // record until a landing is found, or 6 s
-  let res=null; const seg=()=>cleanTimes(samples.filter(s=>s[0]>=cueAt-1500));
-  while(performance.now()-cueAt<6000){
-    await wait(200); if(my!==run) return;
-    res=analyse(seg(), g0, sdBW);
-    if(res && res.landingAbs && samples[samples.length-1][0]-res.landingAbs>400) break;
-  }
-  if(!res || res.error || !res.landingAbs){ useDemo?stopDemo():stopSensor(); cancelAnimationFrame(traceRAF); return fail(res&&res.error||'nojump'); }
-  // quiet standing after landing
+  // record silently: no live trace, analysis or speech until well after landing, because iPhones drop
+  // motion samples when the page is busy
+  cancelAnimationFrame(traceRAF);
+  const seg=()=>cleanTimes(samples.filter(s=>s[0]>=cueAt-1500));
+  await wait(4000); if(my!==run) return;
   live('Stay still','Nearly done…'); say('Stay still.');
-  await wait(1600); if(my!==run) return;
+  await wait(1300); if(my!==run) return;
   const raw=seg(); useDemo?stopDemo():stopSensor(); cancelAnimationFrame(traceRAF);
   const tc=useDemo?{ok:false,why:'demo'}:tiltCorrect(raw);
-  res=analyse(raw, g0, sdBW, null); // tilt-corrected signal kept in the CSV only
-  if(!res || res.error){ return fail(res&&res.error||'nojump'); }
+  let res=analyse(raw, g0, sdBW, null); // tilt-corrected signal kept in the CSV only
+  if(!res || res.error || !res.landingAbs){ return fail(res&&res.error||'nojump'); }
   const tail=raw.slice(-Math.round(rateOf(raw)*0.8)).map(r=>r[1]/g0), tm=tail.reduce((a,b)=>a+b,0)/tail.length;
   res.postStill = Math.sqrt(tail.reduce((a,b)=>a+(b-tm)**2,0)/tail.length) < 0.08 && Math.abs(tm-1)<0.1;
   res.rate=rateOf(raw); res.src=sensorSrc; res.noise=sdBW; res.raw=raw; res.g0=g0; res.tc=tc;
@@ -382,29 +381,24 @@ function analyse(raw,g0,sdBW=0.02,vert=null){
   }
   if(!core) return {error:'nojump'};
   if(core[1]>=n-2) return {landingAbs:null};               // still in the air
-  // 2) anchor on the push peak before and the landing spike after, then find where the force leaves and returns
-  const [P]=argmax(core[0]-35,core[0]), [Lk]=argmax(core[1],core[1]+30);
+  // 2) Landing is sharp at the chest: the first rise through 1.5 body weights into the landing spike.
+  //    Take-off is NOT visible at the chest (the trunk's push ends early and the phone jolts in the air), so it is
+  //    predicted from two push features, using offsets measured against force plates (5 jumps, 2 people, 2 iPhones):
+  //    take-off = push peak + 0.181 s, and = fall through 1.5 body weights + 0.109 s; the two are averaged.
+  const [Lk]=argmax(core[1],core[1]+30);
+  let i1=Lk; while(i1>core[0] && bw[i1-1]>=1.5) i1--;
+  const f8=butter(bw,8,fs);
+  let Pk=-1, pv=-1e9; for(let i=Math.max(0,Lk-110);i<Lk-30;i++) if(f8[i]>pv){pv=f8[i];Pk=i;}
+  if(Pk<0 || pv<1.5) return {error:'nojump'};
+  let k=Pk; while(k<Lk && f8[k]>=1.5) k++;
+  const fall15=k-1+(1.5-f8[k-1])/((f8[k]-f8[k-1])||-1);
+  const to=((Pk+18.1)+(fall15+10.9))/2;
+  const ld=i1-1+(1.5-bw[i1-1])/((bw[i1]-bw[i1-1])||1);
+  if(ld-to<8) return {error:'nojump'};
+  const i0=Math.floor(to), P=Pk, best=[i0,i1];
   const inAir=bw.slice(core[0],core[1]).sort((x,y)=>x-y), air=inAir[Math.floor(inAir.length*0.5)];
-  // the force falls and rises steeply at take-off and landing, so cross at half body weight: a jolt of the phone
-  // in the air (common just after take-off) can't then be mistaken for still being on the ground
-  const e=0.5;
-  let i0=P; while(i0<Lk && bw[i0]>=e) i0++;                // first fall below 0.5 after the push peak
-  let i1=Lk; while(i1>i0 && bw[i1-1]>=e) i1--;             // last rise through 0.5 before the landing spike
-  if(i1-i0<8) return {error:'nojump'};
-  const cross=i=>{ const a=bw[i-1],b=bw[i]; return i-1+(e-a)/((b-a)||1); };
-  // Refine each edge with the tangent method: find the steepest part of the drop (take-off) or rise (landing),
-  // i.e. the peak jerk, fit a line through it and extrapolate to the in-air level. Independent of any threshold.
-  const lvl=Math.max(0,Math.min(0.3,air));
-  const slopeAt=k=>{ let sx=0,sy=0,sxx=0,sxy=0,m=0; for(let j=k-2;j<=k+2;j++){ if(j<0||j>=n) continue; sx+=j; sy+=bw[j]; sxx+=j*j; sxy+=j*bw[j]; m++; }
-    const den=m*sxx-sx*sx; if(!den) return null; const a=(m*sxy-sx*sy)/den; return {a, b:(sy-a*sx)/m}; };
-  const tangent=(from,to,wantFall)=>{ let best=null, bk=-1;
-    for(let k=Math.max(1,from);k<Math.min(n-1,to);k++){ const d=bw[k+1]-bw[k-1]; if(best===null||(wantFall?d<best:d>best)){best=d;bk=k;} }
-    const L=bk>0?slopeAt(bk):null; if(!L||Math.abs(L.a)<0.02) return null; return (lvl-L.b)/L.a; };
-  const c0=cross(i0), c1=cross(i1);
-  let to=tangent(Math.max(P,i0-8), i0+3, true), ld=tangent(i1-3, Math.min(Lk+1,i1+8), false);
-  if(to===null || to<c0-6 || to>c0+4) to=c0;              // fall back to the half-body-weight crossing
-  if(ld===null || ld<c1-6 || ld>c1+1) ld=c1;
-  const best=[i0,i1];
+  // missing phone samples around the jump make the timing unreliable
+  let gapMax=0; for(let k=1;k<raw.length;k++){ const tk=raw[k][0]; if(tk>t0+(P-5)*10 && raw[k-1][0]<t0+(Lk+5)*10) gapMax=Math.max(gapMax,tk-raw[k-1][0]); }
   const flight=(ld-to)/fs; if(flight>1.0) return {error:'odd'};
   const height=9.81*flight*flight/8;
   const fMag=butter(bw,10,fs), f=bwV?butter(bwV,10,fs):fMag; // timing from the total signal, force curve from the vertical one
@@ -418,7 +412,7 @@ function analyse(raw,g0,sdBW=0.02,vert=null){
   // independent check: take-off velocity from impulse (force plate method) vs from flight time
   let v=0; for(let i=Math.max(0,on-20); i<Math.floor(to); i++) v+=9.81*(bw[i]-1)/fs;
   const hImp=v>0? v*v/(2*9.81) : 0, ratio=hImp/height;
-  const odd = !(ratio>0.3 && ratio<2.5);
+  const odd = gapMax>70; // the impulse check isn't usable from the chest (trunk moves more than the centre of mass)
   return {bw:f, bwMag:fMag, tilted:!!bwV, fs, to, ld, toI, landI:best[1], tr, on, up, flight, height, peak:pk, ttt:(to-on)/fs, airLevel:air,
     hImp, odd,
     landingAbs:t0+ld*10};
@@ -437,11 +431,11 @@ function showResults(r){
   $('rTtt').textContent=r.ttt.toFixed(2)+' s';
   $('histCard').style.display=jumps.length>1?'block':'none';
   const q=[]; q.push(`Recorded at about <b>${Math.round(r.rate)}</b> samples per second (${r.src}).`);
-  if(r.rate<90) q.push('At this rate expect jump height to be within about ±2–3 cm.');
+  if(r.rate<90) q.push('Tested against force plates, expect jump height to be within about ±3 cm.');
 
   if(r.airLevel>0.25) q.push('<span class="warn">The phone moved about in the air. Keep it pressed firmly to your chest.</span>');
   if(r.postStill===false) q.push('<span class="warn">You moved after landing, so this one may be less reliable.</span>');
-  if(r.odd) q.push('<span class="warn">This jump looked unusual (your push and your time in the air don\'t quite match). Try another one.</span>');
+  if(r.odd) q.push('<span class="warn">Your phone missed some readings during that jump, so the height may be off. Try another one.</span>');
   $('quality').innerHTML=q.join(' ');
   $('hist').innerHTML=jumps.map((h,i)=>`<div${i===jumps.length-1?' style="color:var(--accent)"':''}><span>Jump ${i+1}${i===jumps.length-1?' (this one)':''}</span><b>${(h*100).toFixed(1)} cm</b></div>`).join('');
   show('s-results');
