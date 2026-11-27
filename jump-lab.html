@@ -169,6 +169,7 @@ a{color:var(--blue)}
   <p id="errText"></p>
   <button class="btn" id="errRetry">Try again</button>
   <button class="btn alt" id="errDemo">See a demo jump</button>
+  <button class="btn alt" id="errCsv" style="font-size:15px;padding:12px;display:none">Download raw data (CSV)</button>
 </section>
 
 </div>
@@ -187,7 +188,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 function live(big,sub){ $('liveBig').textContent=big; if(sub!==undefined) $('liveSub').textContent=sub; }
 
 // ---------- sensor ----------
-let sensorObj=null, gyroObj=null, sensorSrc='';
+let sensorObj=null, gyroObj=null, sensorSrc='', lastRaw=null;
 function onMotion(e){
   const a=e.accelerationIncludingGravity; if(!a||a.x==null) return;
   const rr=e.rotationRate, d2r=Math.PI/180;
@@ -271,6 +272,7 @@ function drawTrace(g0){
 
 // ---------- the guided jump ----------
 async function doJump(useDemo){
+  lastRaw=null;
   const my=++run; demo=useDemo;
   try{ audio=audio||new (window.AudioContext||window.webkitAudioContext)(); audio.resume&&audio.resume(); }catch(e){}
   try{ speechSynthesis.speak(new SpeechSynthesisUtterance('')); }catch(e){} // unlock speech on iOS during the tap
@@ -309,6 +311,7 @@ async function doJump(useDemo){
   await wait(1300); if(my!==run) return;
   const raw=seg(); useDemo?stopDemo():stopSensor(); cancelAnimationFrame(traceRAF);
   const tc=useDemo?{ok:false,why:'demo'}:tiltCorrect(raw);
+  lastRaw={raw,g0,src:sensorSrc,tc};
   let res=analyse(raw, g0, sdBW, null); // tilt-corrected signal kept in the CSV only
   if(!res || res.error || !res.landingAbs){ return fail(res&&res.error||'nojump'); }
   const tail=raw.slice(-Math.round(rateOf(raw)*0.8)).map(r=>r[1]/g0), tm=tail.reduce((a,b)=>a+b,0)/tail.length;
@@ -498,6 +501,7 @@ function fail(code){
   const [t,m]=M[code]||['Something went wrong',String(code)];
   $('errTitle').textContent=t; $('errText').textContent=m; say(t);
   $('errDemo').style.display=code==='nosensor'?'block':'none';
+  $('errCsv').style.display=(lastRaw && (code==='nojump'||code==='odd'))?'block':'none';
   show('s-error');
 }
 
@@ -511,14 +515,17 @@ $('errDemo').onclick=()=>doJump(true);
 $('cancel').onclick=()=>{ run++; stopSensor(); stopDemo(); cancelAnimationFrame(traceRAF); try{speechSynthesis.cancel();}catch(e){} show('s-how'); };
 $('share').onclick=shareResult;
 $('cmp').onchange=()=>{ if(lastResult) drawChart($('chart'),lastResult,false); };
-$('csv').onclick=()=>{ const r=lastResult; if(!r||!r.raw) return;
-  const t0=r.raw[0][0], lines=['# Jump Lab raw data, source '+r.src+', g0 '+r.g0.toFixed(4)+' m/s2, flight '+r.flight.toFixed(4)+' s, height '+(r.height*100).toFixed(2)+' cm',
+function downloadCsv(raw,g0,src,tc,flight,height){
+  const t0=raw[0][0], lines=['# Jump Lab raw data, source '+src+', g0 '+g0.toFixed(4)+' m/s2'+(flight!=null?', flight '+flight.toFixed(4)+' s, height '+(height*100).toFixed(2)+' cm':', no jump detected'),
     'time_ms,ax,ay,az,wx,wy,wz,magnitude,vertical,bodyweights_total,bodyweights_vertical'];
-  const V=r.tc&&r.tc.v;
-  r.raw.forEach((s,i)=>{ const v=V?V[i]:NaN; lines.push([(s[0]-t0).toFixed(2),(+s[2]).toFixed(4),(+s[3]).toFixed(4),(+s[4]).toFixed(4),
-    (+s[6]).toFixed(4),(+s[7]).toFixed(4),(+s[8]).toFixed(4),s[1].toFixed(4),isFinite(v)?v.toFixed(4):'',(s[1]/r.g0).toFixed(4),isFinite(v)?(v/r.g0).toFixed(4):''].join(',')); });
+  const V=tc&&tc.v;
+  raw.forEach((s,i)=>{ const v=V?V[i]:NaN; lines.push([(s[0]-t0).toFixed(2),(+s[2]).toFixed(4),(+s[3]).toFixed(4),(+s[4]).toFixed(4),
+    (+s[6]).toFixed(4),(+s[7]).toFixed(4),(+s[8]).toFixed(4),s[1].toFixed(4),isFinite(v)?v.toFixed(4):'',(s[1]/g0).toFixed(4),isFinite(v)?(v/g0).toFixed(4):''].join(',')); });
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
-  a.download='jumplab_'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)+'.csv'; a.click(); };
+  a.download='jumplab_'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)+'.csv'; a.click();
+}
+$('csv').onclick=()=>{ const r=lastResult; if(r&&r.raw) downloadCsv(r.raw,r.g0,r.src,r.tc,r.flight,r.height); };
+$('errCsv').onclick=()=>{ if(lastRaw) downloadCsv(lastRaw.raw,lastRaw.g0,lastRaw.src,lastRaw.tc,null,null); };
 if(new URLSearchParams(location.search).get('demo')==='1') { $('goJump').onclick=()=>doJump(true); }
 </script>
 </body>
