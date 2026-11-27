@@ -158,7 +158,12 @@ a{color:var(--blue)}
   <div class="card hist" id="histCard" style="display:none"><h2 style="font-size:18px;margin-bottom:6px">This session</h2><div id="hist"></div></div>
   <button class="btn" id="again">Jump again</button>
   <button class="btn alt" id="share">Share my result</button>
-  <button class="btn alt" id="csv" style="font-size:15px;padding:12px">Download raw data (CSV)</button>
+  <div class="card" style="margin-top:14px">
+    <label class="f" for="trialName">Trial name (for saving the data)</label>
+    <div class="inrow"><input id="trialName" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="e.g. Tommy_SJ1"></div>
+    <button class="btn alt" id="csv" style="font-size:15px;padding:12px">Save this trial's data</button>
+    <button class="btn alt csvAll" style="font-size:15px;padding:12px">Save all trials this session</button>
+  </div>
   <p class="credit">Developed by Dr Tommy Bright, Senior Lecturer in Sports Biomechanics, Plymouth Marjon University</p>
 </section>
 
@@ -169,7 +174,12 @@ a{color:var(--blue)}
   <p id="errText"></p>
   <button class="btn" id="errRetry">Try again</button>
   <button class="btn alt" id="errDemo">See a demo jump</button>
-  <button class="btn alt" id="errCsv" style="font-size:15px;padding:12px;display:none">Download raw data (CSV)</button>
+  <div class="card" id="errCsvCard" style="margin-top:14px;display:none">
+    <label class="f" for="errTrialName">Trial name (for saving the data)</label>
+    <div class="inrow"><input id="errTrialName" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="e.g. Tommy_SJ1"></div>
+    <button class="btn alt" id="errCsv" style="font-size:15px;padding:12px">Save this trial's data</button>
+    <button class="btn alt csvAll" style="font-size:15px;padding:12px">Save all trials this session</button>
+  </div>
 </section>
 
 </div>
@@ -312,11 +322,13 @@ async function doJump(useDemo){
   const raw=seg(); useDemo?stopDemo():stopSensor(); cancelAnimationFrame(traceRAF);
   const tc=useDemo?{ok:false,why:'demo'}:tiltCorrect(raw);
   lastRaw={raw,g0,src:sensorSrc,tc};
+  if(!useDemo) addToSession({raw,g0,src:sensorSrc,tc,flight:null,height:null});
   let res=analyse(raw, g0, sdBW, null); // tilt-corrected signal kept in the CSV only
   if(!res || res.error || !res.landingAbs){ return fail(res&&res.error||'nojump'); }
   const tail=raw.slice(-Math.round(rateOf(raw)*0.8)).map(r=>r[1]/g0), tm=tail.reduce((a,b)=>a+b,0)/tail.length;
   res.postStill = Math.sqrt(tail.reduce((a,b)=>a+(b-tm)**2,0)/tail.length) < 0.08 && Math.abs(tm-1)<0.1;
   res.rate=rateOf(raw); res.src=sensorSrc; res.noise=sdBW; res.raw=raw; res.g0=g0; res.tc=tc;
+  if(current&&current.raw===raw){ current.flight=res.flight; current.height=res.height; }
   say('Done. Jump height '+(res.height*100).toFixed(0)+' centimetres.'); beep(990,160);
   live('Done!',''); await wait(500);
   showResults(res);
@@ -501,7 +513,7 @@ function fail(code){
   const [t,m]=M[code]||['Something went wrong',String(code)];
   $('errTitle').textContent=t; $('errText').textContent=m; say(t);
   $('errDemo').style.display=code==='nosensor'?'block':'none';
-  $('errCsv').style.display=(lastRaw && (code==='nojump'||code==='odd'))?'block':'none';
+  $('errCsvCard').style.display=(lastRaw && (code==='nojump'||code==='odd'))?'block':'none';
   show('s-error');
 }
 
@@ -515,17 +527,34 @@ $('errDemo').onclick=()=>doJump(true);
 $('cancel').onclick=()=>{ run++; stopSensor(); stopDemo(); cancelAnimationFrame(traceRAF); try{speechSynthesis.cancel();}catch(e){} show('s-how'); };
 $('share').onclick=shareResult;
 $('cmp').onchange=()=>{ if(lastResult) drawChart($('chart'),lastResult,false); };
-function downloadCsv(raw,g0,src,tc,flight,height){
-  const t0=raw[0][0], lines=['# Jump Lab raw data, source '+src+', g0 '+g0.toFixed(4)+' m/s2'+(flight!=null?', flight '+flight.toFixed(4)+' s, height '+(height*100).toFixed(2)+' cm':', no jump detected'),
+// ---------- saving data: every trial is kept for the session and shared through the phone's share sheet ----------
+const session=[]; let current=null;
+function csvText(e){
+  const raw=e.raw, t0=raw[0][0], V=e.tc&&e.tc.v;
+  const lines=['# Jump Lab raw data, trial '+e.name+', source '+e.src+', g0 '+e.g0.toFixed(4)+' m/s2'+(e.flight!=null?', flight '+e.flight.toFixed(4)+' s, height '+(e.height*100).toFixed(2)+' cm':', no jump detected'),
     'time_ms,ax,ay,az,wx,wy,wz,magnitude,vertical,bodyweights_total,bodyweights_vertical'];
-  const V=tc&&tc.v;
   raw.forEach((s,i)=>{ const v=V?V[i]:NaN; lines.push([(s[0]-t0).toFixed(2),(+s[2]).toFixed(4),(+s[3]).toFixed(4),(+s[4]).toFixed(4),
-    (+s[6]).toFixed(4),(+s[7]).toFixed(4),(+s[8]).toFixed(4),s[1].toFixed(4),isFinite(v)?v.toFixed(4):'',(s[1]/g0).toFixed(4),isFinite(v)?(v/g0).toFixed(4):''].join(',')); });
-  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
-  a.download='jumplab_'+new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)+'.csv'; a.click();
+    (+s[6]).toFixed(4),(+s[7]).toFixed(4),(+s[8]).toFixed(4),s[1].toFixed(4),isFinite(v)?v.toFixed(4):'',(s[1]/e.g0).toFixed(4),isFinite(v)?(v/e.g0).toFixed(4):''].join(',')); });
+  return lines.join('\n');
 }
-$('csv').onclick=()=>{ const r=lastResult; if(r&&r.raw) downloadCsv(r.raw,r.g0,r.src,r.tc,r.flight,r.height); };
-$('errCsv').onclick=()=>{ if(lastRaw) downloadCsv(lastRaw.raw,lastRaw.g0,lastRaw.src,lastRaw.tc,null,null); };
+const safeName=n=>(n||'').trim().replace(/[^A-Za-z0-9_\-. ]+/g,'').replace(/\s+/g,'_').slice(0,60);
+async function shareFiles(entries){
+  const files=entries.map(e=>new File([csvText(e)], safeName(e.name)+'.csv', {type:'text/csv'}));
+  try{
+    if(navigator.canShare && navigator.canShare({files})){ await navigator.share({files, title:'Jump Lab data'}); return; }
+  }catch(err){ if(err.name==='AbortError') return; }
+  for(const f of files){ const a=document.createElement('a'); a.href=URL.createObjectURL(f); a.download=f.name; a.click(); await wait(300); }
+}
+function addToSession(entry){
+  entry.name='Trial_'+(session.length+1); session.push(entry); current=entry;
+  for(const id of ['trialName','errTrialName']){ const el=$(id); el.value=''; el.placeholder=entry.name; }
+  document.querySelectorAll('.csvAll').forEach(b=>{ b.textContent=`Save all trials this session (${session.length})`; b.style.display=session.length>1?'block':'none'; });
+}
+function nameFrom(id){ if(current){ const v=safeName($(id).value); if(v) current.name=v; } }
+$('trialName').onchange=()=>nameFrom('trialName'); $('errTrialName').onchange=()=>nameFrom('errTrialName');
+$('csv').onclick=()=>{ nameFrom('trialName'); if(current) shareFiles([current]); };
+$('errCsv').onclick=()=>{ nameFrom('errTrialName'); if(current) shareFiles([current]); };
+document.querySelectorAll('.csvAll').forEach(b=>b.onclick=()=>{ nameFrom($('s-error').classList.contains('on')?'errTrialName':'trialName'); if(session.length) shareFiles(session); });
 if(new URLSearchParams(location.search).get('demo')==='1') { $('goJump').onclick=()=>doJump(true); }
 </script>
 </body>
